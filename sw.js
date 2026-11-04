@@ -1,5 +1,5 @@
 /* 오프라인 캐시. index.html/app.js를 바꾸면 CACHE 버전을 올려야 폰에 새 버전이 깔립니다. */
-const CACHE = 'azura-v2';
+const CACHE = 'azura-v3';
 const ASSETS = ['./', './index.html', './app.js', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-512-maskable.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

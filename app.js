@@ -253,18 +253,28 @@ function undo(){
     r.events.push(redo); if (redo.type === 'holeout') state.ui.hole = redo.hole % 18 + 1; redo = null; save(); renderPlay();
   }});
 }
-function replaceGreen(){
+const FIELD_LABEL = {center: '그린 중앙', front: '그린 앞', back: '그린 뒤'};
+/* 그 지점에 서서 현재 GPS 위치를 홀 좌표로 넣는다. 토스트의 "이전 값으로"로 5초 안에 되돌릴 수 있다. */
+function setPointFromGps(no, field){
+  const f = freshFix(6000);
+  if (!f) { toast('GPS 위치가 아직 없습니다. 잠시 기다리세요'); return false; }
+  if (f.acc > 10) { toast(`GPS 정확도 ±${Math.round(f.acc)} m. 더 좋아질 때까지 기다리세요`); return false; }
+  const H = hole(no); const prev = H[field] ? Object.assign({}, H[field]) : null;
+  H[field] = {lat: f.lat, lon: f.lon, src: 'gps', t: new Date().toISOString(), acc: Math.round(f.acc * 10) / 10};
+  save(); renderPlay(); repaintHoleRow(no); vibrate([40]);
+  const moved = prev ? ` · 이전 값에서 ${fmtDist(distM(prev, H[field]))}` : '';
+  toast(`${no}번홀 ${FIELD_LABEL[field]} 기록 ±${Math.round(f.acc)} m${moved}`, {label: '이전 값으로', fn: () => { H[field] = prev; save(); renderPlay(); repaintHoleRow(no); }});
+  return true;
+}
+function recordGreenPoint(){
   const h = state.ui.hole; const f = freshFix(6000);
-  if (!f) { toast('GPS 위치가 아직 없습니다'); return; }
-  if (f.acc > 10) { toast(`GPS 정확도 ±${Math.round(f.acc)} m. 더 좋아질 때까지 기다리세요`); return; }
-  const c = holeCenter(h); const d = c ? distM(f, c) : null;
-  let body = `그린 중앙에 서 있을 때만 하세요.\n현재 표시 거리: ${c ? fmtDist(d) : '좌표 없음'}\nGPS 정확도: ±${Math.round(f.acc)} m`;
-  if (c && d <= f.acc) body += '\n\n표시 거리가 GPS 정확도 안이라 지금 좌표도 충분히 맞습니다.';
-  ask({title: `${h}번홀 그린 중앙 교체`, body, buttons: [{label: c ? '현재 위치로 교체' : '현재 위치로 설정', value: true, kind: 'primary'}, {label: '취소', value: null}]}).then(v => {
-    if (!v) return;
-    hole(h).center = {lat: f.lat, lon: f.lon, src: 'gps', t: new Date().toISOString(), prev: c ? {lat: c.lat, lon: c.lon} : null};
-    save(); renderPlay(); toast(`${h}번홀 그린 중앙을 ${c ? '교체' : '설정'}했습니다`);
-  });
+  if (!f) { toast('GPS 위치가 아직 없습니다. 잠시 기다리세요'); return; }
+  const H = hole(h);
+  const info = k => H[k] ? `지금 위치에서 ${fmtDist(distM(f, H[k]))}` : '아직 없음';
+  ask({title: `${h}번홀 그린 좌표를 현재 위치로`,
+       body: `GPS 정확도 ±${Math.round(f.acc)} m${f.acc > 10 ? ' · 너무 나빠서 지금은 기록할 수 없습니다' : ''}\n그 지점에 서 있을 때 누르세요.`,
+       buttons: [{label: `앞 · ${info('front')}`, value: 'front'}, {label: `중앙 · ${info('center')}`, value: 'center', kind: 'primary'}, {label: `뒤 · ${info('back')}`, value: 'back'}, {label: '취소', value: null}]})
+    .then(v => { if (v) setPointFromGps(h, v); });
 }
 function endRound(){
   const r = activeRound(); if (!r) { toast('진행 중인 라운드가 없습니다'); return; }
@@ -502,6 +512,7 @@ function renderGps(){
     if (geoError) txt += ` · ${geoError}`;
   }
   $('#gpsText').textContent = txt;
+  const gs = $('#gpsSet'); if (gs) { gs.className = 'gps ' + (f ? (f.acc <= 5 ? 'ok' : f.acc <= 10 ? 'warn' : 'bad') : ''); $('#gpsSetText').textContent = txt; }
 }
 function vsText(vs){ return vs == null ? '' : vs === 0 ? 'E' : (vs > 0 ? '+' : '') + vs; }
 function renderScore(){
@@ -531,7 +542,7 @@ function openMenu(){
   const r = activeRound();
   ask({title: '메뉴', buttons: [
     {label: '빠진 샷 추가', value: 'missed'},
-    {label: '이 홀 그린 중앙을 현재 위치로 교체', value: 'green'},
+    {label: '그린 앞·중앙·뒤를 현재 위치로 기록', value: 'green'},
     {label: '스코어카드', value: 'card'},
     {label: `화면 켜두기: ${state.settings.keepAwake ? '켬' : '끔'}`, value: 'wake'},
     {label: r ? '라운드 종료' : '새 라운드 시작', value: 'round'},
@@ -540,7 +551,7 @@ function openMenu(){
     {label: '닫기', value: null}]}).then(v => {
     switch (v) {
       case 'missed': addMissed(); break;
-      case 'green': replaceGreen(); break;
+      case 'green': recordGreenPoint(); break;
       case 'card': showCard(r ? r.id : null, 'play'); break;
       case 'wake': state.settings.keepAwake = !state.settings.keepAwake; save(); if (state.settings.keepAwake) requestWake(); else releaseWake(); toast(`화면 켜두기 ${state.settings.keepAwake ? '켬' : '끔'}`); break;
       case 'round': if (r) endRound(); else { ensureRound(); renderPlay(); } break;
@@ -592,22 +603,18 @@ function renderSettings(){
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 
   // 코스 좌표
-  const sec = el('div', 'section', `<h2>코스 좌표</h2><div class="hint">구글 지도에서 그린 중앙을 우클릭해 좌표를 복사한 뒤 붙여넣고 다른 칸을 누르면 저장됩니다. 십진수(-17.68xx, 49.50xx)와 도분초(17°40'52"S 49°30'12"E) 모두 됩니다. 앞·뒤는 선택이고, 비워도 됩니다.</div><div id="holes"></div>`);
+  const sec = el('div', 'section', `<h2>코스 좌표</h2><div class="hint">📍 버튼은 그 지점에 서 있을 때 현재 GPS 위치를 그 칸에 넣습니다. 좌표를 직접 넣으려면 구글 지도에서 우클릭해 복사한 값을 붙여넣고 다른 칸을 누르세요. 십진수(-17.68xx, 49.50xx)와 도분초(17°40'52"S 49°30'12"E) 모두 됩니다. 앞·뒤는 선택이고, 비워도 됩니다.</div><div class="gps" id="gpsSet"><span class="dot"></span><span id="gpsSetText">GPS 대기 중…</span></div><div id="holes"></div>`);
   body.appendChild(sec); const holesEl = sec.querySelector('#holes'); const warns = courseWarnings();
   s.course.holes.forEach(H => {
     const row = el('div', 'holerow');
+    const coordRow = (f, ph) => `<div class="coordrow"><input type="text" placeholder="${ph}" data-f="${f}" autocomplete="off" autocapitalize="off" spellcheck="false"><button data-gps="${f}" aria-label="${FIELD_LABEL[f]}을 현재 위치로" title="${FIELD_LABEL[f]}을 현재 위치로">📍</button></div>`;
     row.innerHTML = `<div class="hn">${H.no}번</div><div class="fields">
       <div class="parrow"><input type="number" inputmode="numeric" min="3" max="6" placeholder="파" data-f="par"><div class="src" data-src></div></div>
-      <input type="text" placeholder="그린 중앙 좌표 붙여넣기" data-f="center" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <div class="row2"><input type="text" placeholder="앞 (선택)" data-f="front" autocomplete="off" autocapitalize="off" spellcheck="false"><input type="text" placeholder="뒤 (선택)" data-f="back" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      ${coordRow('center', '그린 중앙 좌표')}${coordRow('front', '앞 (선택)')}${coordRow('back', '뒤 (선택)')}
       <div class="warnmsg" data-w></div></div>`;
-    row.querySelector('[data-f="par"]').value = H.par == null ? '' : H.par;
-    row.querySelector('[data-f="center"]').value = coordInputText(H.center);
-    row.querySelector('[data-f="front"]').value = coordInputText(H.front);
-    row.querySelector('[data-f="back"]').value = coordInputText(H.back);
-    row.querySelector('[data-src]').textContent = !H.center ? '' : H.center.src === 'gps' ? `중앙: GPS로 교체 ${fmtDate(new Date(H.center.t))}` : H.center.src === 'default' ? '중앙: 구글어스 초기값' : '';
-    row.querySelector('[data-w]').textContent = (warns[H.no] || []).join(' · ');
+    paintHoleRow(row, H, warns);
     row.querySelectorAll('input').forEach(inp => inp.addEventListener('change', () => onHoleInput(H.no, inp, row)));
+    row.querySelectorAll('[data-gps]').forEach(b => b.addEventListener('click', () => { if (setPointFromGps(H.no, b.dataset.gps)) { b.classList.add('done'); setTimeout(() => b.classList.remove('done'), 1500); } }));
     holesEl.appendChild(row);
   });
 
@@ -651,7 +658,27 @@ function renderSettings(){
   });
 
   // 기록 규칙
-  body.appendChild(el('div', 'section', `<h2>기록 규칙</h2><div class="hint">· 공 앞에 서서 치기 전에 클럽을 누릅니다. 그 한 번이 위치 기록이고 1타입니다.<br>· 첫 퍼트는 공 옆에서 퍼터를 누르세요. 어프로치 샷의 끝점이 됩니다. 나머지 퍼트는 어디서 눌러도 됩니다.<br>· 홀아웃은 타수를 더하지 않습니다. 컨시드 퍼트도 퍼터를 눌러야 타수에 들어갑니다.<br>· OB·워터·언플레이어블은 벌타 버튼. 직전 샷 거리는 비워집니다.<br>· 치기 전 누르는 걸 잊었으면 메뉴의 "빠진 샷 추가"를 지금 샷의 클럽을 누르기 전에 넣습니다.<br>· 그린 좌표 검증: 그린 중앙에 서서 표시 거리가 GPS 정확도보다 크게 나오면 메뉴의 "그린 중앙 교체"로 고칩니다.</div>`));
+  body.appendChild(el('div', 'section', `<h2>기록 규칙</h2><div class="hint">· 공 앞에 서서 치기 전에 클럽을 누릅니다. 그 한 번이 위치 기록이고 1타입니다.<br>· 첫 퍼트는 공 옆에서 퍼터를 누르세요. 어프로치 샷의 끝점이 됩니다. 나머지 퍼트는 어디서 눌러도 됩니다.<br>· 홀아웃은 타수를 더하지 않습니다. 컨시드 퍼트도 퍼터를 눌러야 타수에 들어갑니다.<br>· OB·워터·언플레이어블은 벌타 버튼. 직전 샷 거리는 비워집니다.<br>· 치기 전 누르는 걸 잊었으면 메뉴의 "빠진 샷 추가"를 지금 샷의 클럽을 누르기 전에 넣습니다.<br>· 그린 좌표: 그 지점에 서서 설정의 📍 버튼이나 플레이 화면 메뉴의 "현재 위치로 기록"을 누르면 됩니다. 그린 중앙에서 표시 거리가 GPS 정확도보다 크게 나오면 좌표가 틀린 것입니다.</div>`));
+}
+function shortDate(iso){ const d = new Date(iso); return isNaN(d) ? '' : `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function srcText(H){
+  const parts = [];
+  for (const [k, lab] of [['center', '중앙'], ['front', '앞'], ['back', '뒤']]) {
+    const p = H[k]; if (!p) continue;
+    if (p.src === 'gps') parts.push(`${lab} GPS ${shortDate(p.t)}${p.acc != null ? ` ±${Math.round(p.acc)}m` : ''}`);
+    else if (p.src === 'default') parts.push(`${lab} 초기값`);
+  }
+  return parts.join(' · ');
+}
+function paintHoleRow(row, H, warns){
+  row.querySelector('[data-f="par"]').value = H.par == null ? '' : H.par;
+  for (const k of ['center', 'front', 'back']) row.querySelector(`[data-f="${k}"]`).value = coordInputText(H[k]);
+  row.querySelector('[data-src]').textContent = srcText(H);
+  row.querySelector('[data-w]').textContent = ((warns || courseWarnings())[H.no] || []).join(' · ');
+}
+function repaintHoleRow(no){
+  const row = document.querySelectorAll('#holes .holerow')[no - 1]; if (!row) return;
+  paintHoleRow(row, hole(no)); refreshWarns();
 }
 function onHoleInput(no, inp, row){
   const H = hole(no); const f = inp.dataset.f; const w = row.querySelector('[data-w]');
@@ -663,7 +690,7 @@ function onHoleInput(no, inp, row){
   if (p.error) { w.textContent = `${label} 좌표 인식 불가: ${p.error}`; return; }
   H[f] = {lat: p.lat, lon: p.lon, src: 'manual', t: new Date().toISOString()};
   inp.value = coordInputText(H[f]); save();
-  if (f === 'center') row.querySelector('[data-src]').textContent = '';
+  row.querySelector('[data-src]').textContent = srcText(H);
   refreshWarns(p.note ? {no, msg: `${label}: ${p.note}`} : null);
 }
 function refreshWarns(extra){

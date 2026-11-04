@@ -133,11 +133,14 @@ jobs:
       - name: Gradle assembleRelease
         working-directory: apk/android
         env:
-          # 1000 + 실행 번호. 워크플로 파일 이름을 바꾸면 실행 번호가 1부터 다시 시작하니 이름을 유지할 것
-          VERSION_CODE: ${{ 1000 + github.run_number }}
-          VERSION_NAME: 1.0.${{ github.run_number }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
+          # versionCode = 1000 + 실행 번호. 워크플로 파일 이름을 바꾸면 실행 번호가 1부터 다시 시작하니 이름을 유지할 것
+          VERSION_CODE=$((1000 + RUN_NUMBER))
+          VERSION_NAME="1.0.${RUN_NUMBER}"
+          echo "VERSION_CODE=${VERSION_CODE}" >> "${GITHUB_ENV}"
+          echo "VERSION_NAME=${VERSION_NAME}" >> "${GITHUB_ENV}"
           chmod +x gradlew
           ./gradlew assembleRelease \
             -PversionCode="${VERSION_CODE}" \
@@ -166,7 +169,7 @@ jobs:
             echo "## Azura GPS APK"
             echo ""
             echo "- 파일: \`${APK_NAME}\` ($(du -h "dist/${APK_NAME}" | cut -f1), 원본: $(basename "${APK_SRC}"))"
-            echo "- versionCode: ${{ 1000 + github.run_number }}, versionName: 1.0.${{ github.run_number }}"
+            echo "- versionCode: ${VERSION_CODE}, versionName: ${VERSION_NAME}"
             echo "- 서명: ${SIGNING:-unknown}"
             echo "- 커밋: ${GITHUB_SHA}"
           } >> "${GITHUB_STEP_SUMMARY}"
@@ -204,7 +207,7 @@ jobs:
             main 브랜치 최신 빌드입니다. 이 릴리스는 main 에 push 될 때마다 같은 태그(apk-latest)로 덮어써집니다.
 
             - 다운로드: https://github.com/${{ github.repository }}/releases/download/apk-latest/${{ env.APK_NAME }}
-            - 빌드 번호: ${{ github.run_number }} (versionCode ${{ 1000 + github.run_number }}, versionName 1.0.${{ github.run_number }})
+            - 빌드 번호: ${{ github.run_number }} (versionCode ${{ env.VERSION_CODE }}, versionName ${{ env.VERSION_NAME }})
             - 커밋: ${{ github.sha }}
             - 서명: ${{ env.SIGNING == 'release' && '릴리스 키스토어' || 'debug 키 (서명 비밀 미설정)' }}
             - 빌드 로그: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

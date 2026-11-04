@@ -144,15 +144,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(/±20 m/.test(await text('#gpsSetText')), '설정 화면 GPS 상태줄');
   if (shotDir) await page.screenshot({path: path.join(shotDir, 'settings.png')});
 
-  // 7c) 플레이 메뉴에서 앞·중앙·뒤 선택 기록
+  // 7c) 설정을 열면 현재 홀(3번)로 스크롤되고 표시됨
   await page.locator('#s-settings [data-nav="play"]').click(); await sleep(200);
-  await setPos(PF, 3);
-  await page.locator('#menuBtn').click(); await page.getByRole('button', {name: '그린 앞·중앙·뒤를 현재 위치로 기록', exact: true}).click(); await sleep(200);
-  ok(/GPS 정확도 ±3 m/.test(await text('#modal')) && /뒤 · 아직 없음/.test(await text('#modal')), '메뉴 기록창: 정확도와 현재 값 표시');
-  await page.getByRole('button', {name: /^뒤 · /}).click(); await sleep(250);
-  const back3 = await page.evaluate(() => window.__azura.state.settings.course.holes[2].back);
-  ok(back3 && near(back3.lat, PF.lat, 1e-9) && near(back3.lon, PF.lon, 1e-9) && back3.src === 'gps', '메뉴 기록: 3번홀 뒤 좌표 저장');
-  ok(/뒤 \d+/.test(await text('#distblock .fb')), '플레이 화면에 뒤 거리 표시');
+  await page.locator('#menuBtn').click(); await page.getByRole('button', {name: '설정', exact: true}).click(); await sleep(300);
+  const curInfo = await page.evaluate(() => { const row = document.querySelector('#holes .holerow.cur'); const c = document.querySelector('#s-settings .content'); return {no: row && row.querySelector('.hn').textContent, top: row ? row.getBoundingClientRect().top - c.getBoundingClientRect().top : null}; });
+  ok(curInfo.no && curInfo.no.startsWith('3번') && Math.abs(curInfo.top) < 40, `설정: 현재 홀로 스크롤 (${curInfo.no}, top ${Math.round(curInfo.top)})`);
+  await page.locator('#s-settings [data-nav="play"]').click(); await sleep(200);
+  await page.locator('#menuBtn').click(); await sleep(200);
+  ok(!/현재 위치로 기록/.test(await text('#modal')), '플레이 메뉴에서 그린 기록 항목 제거됨');
+  await page.getByRole('button', {name: '닫기', exact: true}).click(); await sleep(150);
 
   // 8) 백업 JSON 가져오기 병합
   const bk = await page.evaluate(() => JSON.parse(window.__azura.backupJson()));

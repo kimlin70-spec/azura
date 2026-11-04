@@ -9,14 +9,20 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!-- 웹뷰가 뜨는 실제 화면 테마. windowBackground 는 상태바/내비게이션바 영역(MainActivity 가 패딩으로 비워 두는 부분)의 색이 된다. -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/window_background</item>
     </style>
 
-
+    <!-- 런치(스플래시) 테마: androidx core-splashscreen. 초록(#1b7f3b) 배경 가운데 흰 깃발(어댑티브 아이콘 foreground PNG).
+         API 31+ 는 시스템 스플래시가 windowSplashScreenBackground/AnimatedIcon 을 쓰고,
+         그 아래 버전은 Theme.SplashScreen 의 호환 windowBackground(배경색 + 아이콘)가 같은 속성을 쓴다. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
         <item name="android:background">@drawable/splash</item>
     </style>
 </resources>

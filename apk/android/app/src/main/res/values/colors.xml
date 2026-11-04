@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 앱 기본 색: 웹앱의 theme-color 와 같은 초록 -->
+    <color name="colorPrimary">#1b7f3b</color>
+    <color name="colorPrimaryDark">#145f2c</color>
+    <color name="colorAccent">#1b7f3b</color>
+    <!-- 스플래시 배경 -->
+    <color name="splash_background">#1b7f3b</color>
+    <!-- 웹뷰 화면의 창 배경(상태바/내비게이션바 영역 색). 웹앱 배경(#fff)과 맞춤 -->
+    <color name="window_background">#ffffff</color>
+</resources>

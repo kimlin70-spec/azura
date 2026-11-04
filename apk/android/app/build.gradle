@@ -1,5 +1,31 @@
 apply plugin: 'com.android.application'
 
+// ---------------------------------------------------------------------------
+// 버전: 프로젝트 속성으로 넘기면 그것을 쓰고, 없으면 기본값.
+//   ./gradlew assembleRelease -PversionCode=12 -PversionName=1.2.0
+// ---------------------------------------------------------------------------
+def appVersionCode = project.hasProperty('versionCode') ? project.property('versionCode').toString().toInteger() : 1
+def appVersionName = project.hasProperty('versionName') ? project.property('versionName').toString() : "1.0.0"
+
+// ---------------------------------------------------------------------------
+// 서명: android/keystore.properties (gitignore됨) 가 있으면 그 키로 release 서명,
+// 없으면 debug 키(signingConfigs.debug)로 release 빌드가 되게 한다.
+//   keystore.properties 키: storeFile, storePassword, keyAlias, keyPassword
+//   storeFile 은 절대 경로 또는 android/ 기준 상대 경로.
+// ---------------------------------------------------------------------------
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+def hasReleaseKeystore = false
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { stream -> keystoreProps.load(stream) }
+    def storeFilePath = keystoreProps.getProperty('storeFile', '').trim()
+    if (!storeFilePath.isEmpty() && rootProject.file(storeFilePath).exists()) {
+        hasReleaseKeystore = true
+    } else {
+        logger.warn("keystore.properties 의 storeFile(" + storeFilePath + ")을 찾지 못해 debug 키로 서명합니다.")
+    }
+}
+
 android {
     namespace = "io.github.kimlin70spec.azura"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +33,8 @@ android {
         applicationId "io.github.kimlin70spec.azura"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +42,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasReleaseKeystore) {
+                storeFile rootProject.file(keystoreProps.getProperty('storeFile').trim())
+                storePassword keystoreProps.getProperty('storePassword', '')
+                keyAlias keystoreProps.getProperty('keyAlias', 'azura')
+                keyPassword keystoreProps.getProperty('keyPassword', '')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig = hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
         }
     }
 }

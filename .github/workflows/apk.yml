@@ -1,0 +1,213 @@
+# Azura GPS — 안드로이드 APK 자동 빌드
+#
+# 언제 돌아가나
+#   - main 브랜치에 push        → APK 빌드 + 아티팩트 업로드 + 릴리스 "apk-latest" 갱신
+#   - claude/** 브랜치에 push   → APK 빌드 + 아티팩트 업로드 (검증용, 릴리스는 안 만듦)
+#   - Actions 탭에서 수동 실행 (workflow_dispatch) → 빌드 + 아티팩트 업로드
+#
+# 결과물 받는 곳
+#   - 릴리스:   https://github.com/kimlin70-spec/azura/releases/download/apk-latest/azura-gps.apk
+#   - 아티팩트: Actions → 해당 실행 → Artifacts → azura-gps-apk (zip 안에 azura-gps.apk)
+#
+# 서명 (리포지토리 Settings → Secrets and variables → Actions)
+#   ANDROID_KEYSTORE_B64      키스토어 파일을 base64 로 인코딩한 문자열 (없으면 debug 키로 서명)
+#   ANDROID_KEYSTORE_PASSWORD 키스토어 비밀번호 (키스토어가 있으면 필수)
+#   ANDROID_KEY_ALIAS         키 별칭 (없으면 azura)
+#   ANDROID_KEY_PASSWORD      키 비밀번호 (없으면 키스토어 비밀번호와 같다고 간주)
+#   비밀을 하나도 넣지 않아도 debug 서명으로 설치 가능한 APK 가 나온다.
+
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 릴리스 생성/갱신, apk-latest 태그 이동에 필요
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}   # main 은 릴리스 교체 중 끊기지 않게
+
+env:
+  APK_NAME: azura-gps.apk
+  ANDROID_API: '36'       # apk/android/variables.gradle 의 compileSdkVersion 과 맞춤
+  BUILD_TOOLS: '36.0.0'   # AGP 8.13 기본 build-tools
+  JAVA_VERSION: '21'      # @capacitor/android 와 각 플러그인의 JavaVersion.VERSION_21 과 맞춤
+
+jobs:
+  build:
+    name: APK 빌드
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # secrets 는 if 조건에서 직접 쓸 수 없어 env 로 옮겨 존재 여부만 검사한다 (값은 노출되지 않음)
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true   # 아래 apk-latest 태그 push 에 필요
+
+      - name: JDK ${{ env.JAVA_VERSION }} 설치 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Node.js 22 설치 (npm 캐시)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apk/package-lock.json
+
+      - name: Android SDK 준비 (platform ${{ env.ANDROID_API }}, build-tools ${{ env.BUILD_TOOLS }})
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: platform-tools platforms;android-${{ env.ANDROID_API }} build-tools;${{ env.BUILD_TOOLS }}
+
+      - name: Gradle 캐시 설정
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: npm ci, 웹 파일 복사, Capacitor sync
+        working-directory: apk
+        run: |
+          set -euo pipefail
+          npm ci
+          node copy-web.js
+          npx cap sync android
+
+      - name: 웹앱·네이티브 글루 자동 검사 (Playwright)
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+          node tests/e2e.cjs
+          node tests/native.cjs
+
+      - name: 서명 키스토어 복원 (비밀 ANDROID_KEYSTORE_B64 가 있을 때만)
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: apk/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_PASSWORD}" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 는 있는데 ANDROID_KEYSTORE_PASSWORD 비밀이 없습니다. 둘 다 넣거나 둘 다 지우세요."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "${KEYSTORE_B64}" | tr -d '\r\n\t ' | base64 -d > azura.keystore || { echo "::error::ANDROID_KEYSTORE_B64 가 올바른 base64 가 아닙니다."; exit 1; }
+          KS_PATH="$(pwd)/azura.keystore"
+          if [ ! -s "${KS_PATH}" ]; then
+            echo "::error::키스토어 base64 디코드 결과가 비어 있습니다. ANDROID_KEYSTORE_B64 값을 확인하세요."
+            exit 1
+          fi
+          # app/build.gradle 이 어느 기준 경로로 읽든 동작하도록 storeFile 은 절대경로로 쓴다
+          {
+            echo "storeFile=${KS_PATH}"
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS:-azura}"
+            echo "keyPassword=${KEY_PASSWORD:-${KEYSTORE_PASSWORD}}"
+          } > keystore.properties
+          echo "keystore.properties 생성 완료 (storeFile=${KS_PATH}, $(stat -c %s "${KS_PATH}") bytes, keyAlias=${KEY_ALIAS:-azura})"
+          echo "SIGNING=release" >> "${GITHUB_ENV}"
+
+      - name: 서명 없음 안내 (debug 키로 빌드)
+        if: env.HAS_KEYSTORE != 'true'
+        run: |
+          echo "::notice::ANDROID_KEYSTORE_B64 비밀이 없어 debug 키로 서명한 release APK 를 만듭니다."
+          echo "SIGNING=debug" >> "${GITHUB_ENV}"
+
+      - name: Gradle assembleRelease
+        working-directory: apk/android
+        env:
+          # 1000 + 실행 번호. 워크플로 파일 이름을 바꾸면 실행 번호가 1부터 다시 시작하니 이름을 유지할 것
+          VERSION_CODE: ${{ 1000 + github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease \
+            -PversionCode="${VERSION_CODE}" \
+            -PversionName="${VERSION_NAME}" \
+            --no-daemon
+
+      - name: APK 파일 정리 (${{ env.APK_NAME }})
+        run: |
+          set -euo pipefail
+          OUT_DIR="apk/android/app/build/outputs/apk/release"
+          echo "빌드 산출물:"; ls -la "${OUT_DIR}"
+          # 서명 여부에 따라 app-release.apk 또는 app-release-unsigned.apk 이므로 첫 번째 *.apk 를 집는다
+          APK_SRC="$(ls "${OUT_DIR}"/*.apk 2>/dev/null | head -n 1 || true)"
+          if [ -z "${APK_SRC}" ]; then
+            echo "::error::${OUT_DIR} 에 *.apk 가 없습니다."
+            exit 1
+          fi
+          mkdir -p dist
+          cp "${APK_SRC}" "dist/${APK_NAME}"
+          ls -la dist
+          APKSIGNER="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/build-tools/${BUILD_TOOLS}/apksigner"
+          if [ -x "${APKSIGNER}" ]; then
+            "${APKSIGNER}" verify --print-certs "dist/${APK_NAME}" || echo "::warning::apksigner 검증 실패 (서명되지 않은 APK 일 수 있음)"
+          fi
+          {
+            echo "## Azura GPS APK"
+            echo ""
+            echo "- 파일: \`${APK_NAME}\` ($(du -h "dist/${APK_NAME}" | cut -f1), 원본: $(basename "${APK_SRC}"))"
+            echo "- versionCode: ${{ 1000 + github.run_number }}, versionName: 1.0.${{ github.run_number }}"
+            echo "- 서명: ${SIGNING:-unknown}"
+            echo "- 커밋: ${GITHUB_SHA}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: 아티팩트 업로드 (azura-gps-apk)
+        uses: actions/upload-artifact@v4
+        with:
+          name: azura-gps-apk
+          path: dist/${{ env.APK_NAME }}
+          if-no-files-found: error
+          retention-days: 30
+
+      # ---- 아래는 main 브랜치 push 일 때만 ----
+
+      - name: 태그 apk-latest 를 현재 커밋으로 이동
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          git tag -f apk-latest "${GITHUB_SHA}"
+          git push --force origin refs/tags/apk-latest
+
+      - name: 릴리스 apk-latest 생성/갱신
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: Azura GPS APK (최신)
+          prerelease: false
+          draft: false
+          make_latest: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: dist/${{ env.APK_NAME }}
+          body: |
+            main 브랜치 최신 빌드입니다. 이 릴리스는 main 에 push 될 때마다 같은 태그(apk-latest)로 덮어써집니다.
+
+            - 다운로드: https://github.com/${{ github.repository }}/releases/download/apk-latest/${{ env.APK_NAME }}
+            - 빌드 번호: ${{ github.run_number }} (versionCode ${{ 1000 + github.run_number }}, versionName 1.0.${{ github.run_number }})
+            - 커밋: ${{ github.sha }}
+            - 서명: ${{ env.SIGNING == 'release' && '릴리스 키스토어' || 'debug 키 (서명 비밀 미설정)' }}
+            - 빌드 로그: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            설치: 휴대폰에서 위 다운로드 링크를 열어 APK 를 받고, "알 수 없는 앱 설치 허용" 후 설치하세요.
+            서명 키가 바뀌면(debug ↔ 릴리스) 기존 앱을 삭제한 뒤 설치해야 합니다.

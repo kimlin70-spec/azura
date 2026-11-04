@@ -4,4 +4,6 @@
     <string name="title_activity_main">Azura GPS</string>
     <string name="package_name">io.github.kimlin70spec.azura</string>
     <string name="custom_url_scheme">io.github.kimlin70spec.azura</string>
+    <string name="capacitor_background_geolocation_notification_channel_name">라운드 중 GPS 유지</string>
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_notification</string>
 </resources>

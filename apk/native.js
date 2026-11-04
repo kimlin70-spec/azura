@@ -52,9 +52,14 @@
         const id = await BG.addWatcher(options, (loc, err) => {
           if (myGen !== gen) return;
           if (err) {
-            const denied = err.code === 'NOT_AUTHORIZED';
-            if (cb.onErr) cb.onErr({code: denied ? 1 : 2, message: err.message || String(err)});
+            const msg = err.message || String(err);
+            const servicesOff = /disabled/i.test(msg);                 // 플러그인은 위치(GPS) 꺼짐도 NOT_AUTHORIZED로 보냄
+            const denied = err.code === 'NOT_AUTHORIZED' && !servicesOff;
+            if (cb.onErr) cb.onErr({code: denied ? 1 : 2, message: msg});
             if (denied) say('위치 권한이 필요합니다', {label: '설정 열기', fn: () => BG.openSettings().catch(() => {})});
+            else if (servicesOff) say('휴대폰의 위치(GPS)를 켜 주세요');
+            // 권한/위치 꺼짐은 플러그인이 워처를 유지하고 켜지면 스스로 복구한다. 그 외 오류는 워처를 버려 다음 startGeo가 다시 만들게 한다.
+            if (err.code !== 'NOT_AUTHORIZED' && myGen === gen) { gen++; current = null; currentMode = null; }
             return;
           }
           if (!loc || cb.onFix == null) return;
@@ -62,7 +67,11 @@
         });
         if (myGen !== gen) { BG.removeWatcher({id}).catch(() => {}); return null; } // 시작 중에 다른 start/stop이 와서 밀려남
         return id;
-      })().catch(e => { if (cb.onErr) cb.onErr({code: 2, message: (e && e.message) || String(e)}); return null; });
+      })().catch(e => {
+        if (cb.onErr) cb.onErr({code: 2, message: (e && e.message) || String(e)});
+        if (myGen === gen) { gen++; current = null; currentMode = null; } // 다음 startGeo(화면 복귀, 라운드 시작)에서 재시도
+        return null;
+      });
     },
     stop() { if (!current) return; clearTimeout(stopTimer); stopTimer = setTimeout(reallyStop, 50); }
   };
@@ -70,7 +79,8 @@
   /* ---------- 내보내기: 캐시 폴더에 쓰고 안드로이드 공유창 ---------- */
   async function exportFile(name, text, mime){
     const res = await Filesystem.writeFile({path: name, data: text, directory: 'CACHE', encoding: 'utf8'});
-    await Share.share({title: name, dialogTitle: '내보내기', files: [res.uri]});
+    try { await Share.share({title: name, dialogTitle: '내보내기', files: [res.uri]}); }
+    catch (e) { if (e && /cancel/i.test(e.message || '')) return; throw e; } // 공유창을 그냥 닫은 것은 실패가 아님
   }
 
   /* ---------- 화면 켜두기 ---------- */

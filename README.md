@@ -12,7 +12,7 @@
 
 ## 배포 (GitHub Pages)
 
-1. 이 저장소의 **Settings → Pages → Build and deployment** 에서 Source를 `Deploy from a branch`, Branch를 `main` / `/ (root)` 로 지정합니다.
+1. 이 저장소의 **Settings → Pages → Build and deployment** 에서 Source를 `Deploy from a branch`, Branch를 `main` / `/ (root)`로 지정합니다.
 2. 몇 분 뒤 `https://kimlin70-spec.github.io/azura/` 에서 열립니다.
 3. 폰 Chrome에서 그 주소를 열고, 위치 권한을 **허용**한 뒤, 메뉴(⋮) → **홈 화면에 추가**로 설치합니다. 설치된 앱은 주소창 없이 전체 화면으로 뜨고 오프라인에서도 열립니다.
 4. 안드로이드 12 이상이면 설정 → 앱 → Chrome → 권한 → 위치에서 **정확한 위치**를 켜야 합니다. 라운드 중에는 배터리 세이버를 끄는 것이 좋습니다.
@@ -71,3 +71,114 @@ node tests/e2e.cjs
 
 Chromium과 Playwright가 있으면 GPS를 흉내 내어 거리 표시, 샷 기록, CSV, 좌표 파서, 설정 화면을 검사합니다.
 코스 밖에서 직접 써 보려면 설정 → **테스트 위치**에 좌표를 넣으면 GPS 대신 그 위치를 씁니다.
+
+## 안드로이드 APK
+
+같은 `index.html`과 `app.js`를 Capacitor로 감싼 안드로이드 앱입니다. 앱 이름은 **Azura GPS**입니다. 웹앱과 다른 점은 다음과 같습니다.
+
+- 라운드 중에는 화면이 꺼져도 GPS가 유지됩니다. 그동안 "라운드 중이라 GPS를 켜 두고 있습니다" 알림이 떠 있습니다.
+- CSV와 JSON 내보내기는 안드로이드 공유창으로 열립니다. 카카오톡, 드라이브, 파일 앱 등으로 보낼 수 있습니다.
+- 뒤로 가기 버튼은 창 닫기 → 플레이 화면 → 앱 숨기기 순서로 동작합니다. 앱을 숨겨도 라운드 중이면 GPS는 계속 돕니다.
+- 웹 파일이 앱 안에 들어 있어 주소나 서비스 워커가 필요 없습니다.
+
+GitHub Pages 웹앱은 그대로 쓸 수 있습니다. 아이폰은 웹앱을, 현장용 안드로이드 폰은 APK를 쓰면 됩니다.
+
+### APK 받기 A. 자동 빌드
+
+`main`에 합칠 때마다 GitHub Actions가 APK를 만들어 릴리스에 올립니다. 설치에는 PC가 필요 없습니다. 워크플로 파일은 `.github/workflows/apk.yml`이고, 이 파일을 `main`에 한 번 합쳐 Actions가 초록색으로 끝난 뒤부터 아래 링크가 살아납니다. 404가 뜨면 Actions 탭에 빨간 X가 있는지 보세요.
+
+1. 폰 브라우저에서 `https://github.com/kimlin70-spec/azura/releases/download/apk-latest/azura-gps.apk`를 엽니다. 릴리스 페이지는 `https://github.com/kimlin70-spec/azura/releases/tag/apk-latest` 입니다.
+2. Chrome이 "해를 끼칠 수 있는 파일"이라고 물으면 다운로드를 누릅니다. 받은 `azura-gps.apk`를 열면 "출처를 알 수 없는 앱" 설정으로 보내는데, 거기서 방금 쓴 앱의 **이 출처 허용**을 켜고 돌아옵니다. 허용 대상은 APK를 연 앱입니다. Chrome이나 내 파일 앱입니다. 삼성은 설정 → 보안 및 개인정보 보호 → 자동 차단이 켜져 있으면 먼저 끕니다.
+3. Play 프로텍트가 스캔을 물으면 스캔해도 됩니다. "차단됨" 화면이 뜨면 **자세히 알아보기** 뒤에 숨은 **무시하고 설치**를 고릅니다. 스토어 밖 앱에 흔히 뜨는 경고입니다.
+4. 설치가 끝나면 앱 목록의 **Azura GPS**를 엽니다.
+
+릴리스 말고 특정 빌드를 받으려면 `https://github.com/kimlin70-spec/azura/actions` 에서 실행을 고르고 아래 **Artifacts → azura-gps-apk**를 받습니다. zip 안에 `azura-gps.apk`가 있습니다. GitHub 로그인이 필요합니다.
+아티팩트는 30일 뒤 지워집니다. `claude/`로 시작하는 브랜치에 push 해도 빌드와 아티팩트는 만들지만 릴리스는 갱신하지 않습니다. `main`에 합친 뒤부터는 Actions 탭의 **Build Android APK → Run workflow**로 수동 실행도 됩니다.
+
+### 서명 키 넣기
+
+한 번만 하면 됩니다. 키스토어 파일 `azura-sideload.keystore`와 비밀번호가 적힌 `GitHub-비밀-설정값.txt`는 이 앱을 만든 대화에서 따로 전달받았습니다. 직접 만들려면 PC에서 `keytool -genkeypair -v -keystore azura.keystore -alias azura -keyalg RSA -keysize 2048 -validity 10000`을 실행합니다. keytool은 Android Studio의 `jbr/bin` 폴더나 아무 JDK에 있습니다.
+
+안드로이드는 같은 키로 서명된 APK만 덮어쓰기 설치를 허용합니다. 비밀을 넣지 않으면 빌드마다 다른 debug 키로 서명되어 새 버전을 설치할 때마다 기존 앱을 삭제해야 하고, 라운드 기록도 함께 지워집니다. 키스토어 파일과 비밀번호는 별도로 전달받습니다.
+
+1. GitHub 저장소 페이지에서 **Settings → Secrets and variables → Actions**로 갑니다.
+2. **New repository secret**을 누르고 아래 표의 이름과 값을 넣습니다. 이름은 대문자 그대로 써야 합니다.
+3. `ANDROID_KEYSTORE_B64`와 `ANDROID_KEYSTORE_PASSWORD` 2개는 필수이고, 나머지 2개는 기본값과 다를 때만 넣습니다. 넣었으면 끝입니다. 다음 `main` push 부터 그 키로 서명되고, 릴리스 본문에 `서명: 릴리스 키스토어`로 표시됩니다.
+4. debug 서명 APK가 이미 깔려 있었다면 한 번은 삭제 후 설치해야 합니다. 삭제 전에 **전체 백업 JSON**을 받으세요.
+
+| 이름 | 값 |
+|---|---|
+| `ANDROID_KEYSTORE_B64` | 키스토어 파일을 base64 문자열로 바꾼 것. 줄바꿈이 섞여 있어도 됨 |
+| `ANDROID_KEYSTORE_PASSWORD` | 키스토어 비밀번호. `ANDROID_KEYSTORE_B64`가 있는데 이것이 없으면 빌드 실패 |
+| `ANDROID_KEY_ALIAS` | 키 별칭. 비우면 `azura` |
+| `ANDROID_KEY_PASSWORD` | 키 비밀번호. 비우면 키스토어 비밀번호와 같다고 봄 |
+
+키스토어 파일과 비밀번호를 잃어버리면 같은 키로 다시 서명할 수 없습니다. 파일은 저장소에 넣지 말고 따로 보관하세요. `.gitignore`가 `*.keystore`, `*.jks`, `keystore.properties`를 막고 있습니다.
+
+### APK 받기 B. PC에서 직접 빌드
+
+1. Node.js 22 이상과 Android Studio를 설치합니다. Android Studio가 JDK 21과 안드로이드 SDK를 같이 넣어 주지만, 터미널 빌드에서 쓰려면 프로젝트를 Android Studio로 한 번 열어 SDK를 받고, `JAVA_HOME`을 Android Studio의 `jbr` 폴더로 지정해야 합니다. 윈도우는 보통 `C:\Program Files\Android\Android Studio\jbr`입니다.
+2. 저장소를 받은 뒤 터미널에서 실행합니다.
+
+```bash
+cd apk
+npm install
+npm run sync    # 루트 웹 파일을 www/로 복사하고 안드로이드 프로젝트에 반영
+npm run open    # Android Studio로 apk/android 열기
+```
+
+3. Android Studio에서 **Build → Generate Signed App Bundle / APK → APK**를 고르고 키스토어를 지정해 빌드합니다. 처음이면 그 창의 **Create new**로 키를 만들 수 있습니다. 별칭은 `azura`로 두세요.
+4. 터미널로 빌드하려면 `apk/android/keystore.properties` 파일을 만듭니다. 키 이름 4개는 다음과 같습니다.
+
+```
+storeFile=azura.keystore
+storePassword=키스토어비밀번호
+keyAlias=azura
+keyPassword=키비밀번호
+```
+
+`storeFile`은 절대 경로이거나 `apk/android/` 기준 상대 경로입니다. 윈도우 절대 경로는 `C:/Users/...`처럼 슬래시로 씁니다. 빌드 로그에 debug 키로 서명한다는 경고가 보이면 경로가 틀린 것입니다. 그 다음 `apk/android`에서 `./gradlew assembleRelease -PversionCode=2 -PversionName=1.0.2`를 실행하면 `app/build/outputs/apk/release/app-release.apk`가 나옵니다. 윈도우는 `gradlew.bat`입니다. 파일이 없으면 debug 키로 서명됩니다. 폰에 복사해 설치하거나 USB로 연결해 `adb install -r app-release.apk`로 설치합니다.
+
+GitHub 비밀 `ANDROID_KEYSTORE_B64`에 넣을 문자열은 리눅스에서 `base64 -w0 azura.keystore`, 맥에서 `base64 -i azura.keystore`, 윈도우 PowerShell에서 `[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path azura.keystore)))`로 만듭니다.
+
+루트의 `index.html`이나 `app.js`를 고쳤으면 `npm run sync`를 다시 돌려야 APK에 반영됩니다.
+
+### 폰 설정
+
+1. 앱을 처음 열면 위치 권한을 묻습니다. **앱 사용 중에만 허용** 과 **정확한 위치**를 켭니다. "항상 허용"은 필요 없습니다. 거부했으면 설정 → 앱 → Azura GPS → 권한 → 위치에서 바꿉니다. 앱이 "위치 권한이 필요합니다" 안내와 **설정 열기** 버튼을 띄우기도 합니다.
+2. 처음 클럽을 눌러 라운드를 시작하면 안드로이드 13 이상은 알림 권한을 묻습니다. **허용**합니다. 거부해도 GPS는 돌지만 알림이 안 보이고, 12 이하는 묻지 않습니다. 바로 "라운드 중이라 GPS를 켜 두고 있습니다" 알림이 뜨는 것이 정상이고, 라운드를 종료하면 사라집니다.
+3. 배터리 제한을 풉니다. 메뉴 이름은 기기마다 다릅니다. 픽셀은 앱 정보 → 앱 배터리 사용량 → **제한 없음**, 삼성은 설정 → 배터리 → 백그라운드 사용 제한에서 절전 상태 앱 목록에 없게 하고 **절전 안 함 앱**에 추가, 샤오미는 앱 정보 → 배터리 절약 → **제한 없음**과 **자동 시작** 켜기입니다. 막히면 dontkillmyapp.com에서 기기 이름을 찾으세요. 이 앱은 구글 Play 서비스의 위치 기능을 쓰므로 Play 서비스가 없는 폰에서는 위치가 오지 않습니다. 제한되면 화면을 끈 뒤 몇 분 만에 GPS가 멈출 수 있습니다.
+4. 화면을 켜 두고 싶으면 메뉴 → **화면 켜두기**를 켭니다. 꺼 두어도 라운드 중 GPS는 유지됩니다.
+
+### 웹앱 기록 옮기기
+
+Chrome 웹앱과 APK는 저장소가 따로입니다. 한쪽에서 기록한 라운드는 다른 쪽에 보이지 않습니다.
+
+1. Chrome 웹앱에서 설정 → 데이터 → **전체 백업 JSON**을 누릅니다. 공유창이 뜨면 드라이브나 파일 앱에 저장하고, 안 뜨면 다운로드 폴더에 `azura_backup_날짜.json`이 저장됩니다.
+2. APK에서 설정 → 데이터 → **JSON 가져오기**로 그 파일을 고르고 **라운드 + 설정(코스·클럽) 모두**를 누릅니다. 코스 좌표와 클럽 목록도 함께 넘어옵니다.
+3. 그 뒤로는 한쪽만 쓰세요. 두 곳에 번갈아 기록하면 합치기 어렵습니다.
+
+### 업데이트
+
+1. `main`에 합치면 몇 분 뒤 새 APK가 같은 릴리스 링크에 올라옵니다. 빌드 번호는 Actions 실행 번호이고 앱 버전은 `1.0.빌드번호` 입니다.
+2. 폰에서 같은 링크를 다시 열어 받고 설치하면 덮어쓰기 됩니다. 기록은 남습니다.
+3. 덮어쓰기는 서명 키가 같고 버전 번호가 깔린 것보다 높을 때만 됩니다. "앱이 설치되지 않았습니다"가 뜨면 키가 바뀌었거나 더 낮은 버전이니 **전체 백업 JSON**을 받은 뒤 삭제하고 다시 설치합니다.
+
+웹앱 업데이트에 필요한 `sw.js`의 CACHE 버전 올리기는 APK와 무관합니다. APK는 새 파일로 다시 설치해야 바뀝니다.
+
+### 첫 설치 후 점검
+
+1. 앱을 열고 위치 권한을 허용하면 몇 초 안에 `GPS ±n m · 지금` 과 그린까지 거리가 나옵니다.
+2. 클럽을 하나 누르면 알림 권한을 묻고 상단에 "라운드 중이라 GPS를 켜 두고 있습니다" 알림이 뜹니다.
+3. 화면을 끄고 2분쯤 뒤 다시 켜면 거리 옆 시각이 바로 `지금`으로 바뀝니다. `n초 전 · 갱신 대기`가 오래 남으면 배터리 설정을 확인하세요.
+4. 뒤로 가기 버튼: 설정 화면에서 누르면 플레이 화면으로, 플레이 화면에서 누르면 앱이 숨겨집니다. 다시 열면 그대로입니다.
+5. 메뉴 → 라운드 종료 → **종료하고 CSV 내보내기**를 누르면 공유창이 뜹니다. 공유창을 그냥 닫아도 기록은 그대로입니다.
+6. 라운드를 종료하면 알림이 사라집니다.
+
+### 개발 메모
+
+- 웹 파일의 원본은 루트의 `index.html`, `app.js`입니다. `apk/www/`는 `apk/copy-web.js`가 만드는 생성물이라 git에 없고, 직접 고치면 안 됩니다.
+- `apk/native.js`: APK 안에서만 도는 연결 코드. `window.AzuraNative`를 만들어 `app.js`가 백그라운드 GPS, 파일 공유, 화면 켜두기를 넘깁니다. 브라우저에서는 첫 검사에서 바로 끝납니다.
+- `apk/android/`: Capacitor가 만든 네이티브 프로젝트. 아이콘, 스플래시, 권한, 서명 설정이 들어 있습니다. 폴더 설명은 `apk/README.md`에 있습니다.
+- `.github/workflows/apk.yml`: 자동 빌드. `main`과 `claude/**` push, 수동 실행에 돌고 `main`일 때만 릴리스를 갱신합니다.
+- 검사: `node tests/native.cjs`. 안드로이드 기기 없이 가짜 브리지로 `native.js`와 `app.js`의 네이티브 분기를 검사합니다. `apk/node_modules`가 설치돼 있어야 합니다. 웹앱 검사 `node tests/e2e.cjs`는 그대로입니다.

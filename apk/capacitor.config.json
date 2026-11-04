@@ -2,7 +2,14 @@
   "appId": "io.github.kimlin70spec.azura",
   "appName": "Azura GPS",
   "webDir": "www",
+  "backgroundColor": "#ffffff",
   "android": {
     "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable",
+      "style": "LIGHT"
+    }
   }
 }

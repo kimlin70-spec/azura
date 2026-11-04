@@ -154,6 +154,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(back3 && near(back3.lat, PF.lat, 1e-9) && near(back3.lon, PF.lon, 1e-9) && back3.src === 'gps', '메뉴 기록: 3번홀 뒤 좌표 저장');
   ok(/뒤 \d+/.test(await text('#distblock .fb')), '플레이 화면에 뒤 거리 표시');
 
+  // 7d) 클럽 목록: 저장 버튼, 타이핑 자동 저장, 기본 목록 복원은 확인창
+  await page.locator('#menuBtn').click(); await page.getByRole('button', {name: '설정', exact: true}).click(); await sleep(300);
+  await page.locator('#clubsTa').fill('드라이버\n7번 아이언\n퍼터'); await sleep(900);
+  ok((await page.evaluate(() => window.__azura.state.settings.clubs.join('|'))) === '드라이버|7번 아이언|퍼터', '클럽: 타이핑 뒤 자동 저장');
+  await page.locator('#clubsTa').fill('드라이버\n5번 우드\n7번 아이언\n퍼터');
+  await page.getByRole('button', {name: '저장', exact: true}).click(); await sleep(200);
+  ok((await page.evaluate(() => window.__azura.state.settings.clubs.length)) === 4 && /클럽 목록 저장/.test(await text('#toast')), '클럽: 저장 버튼');
+  await page.getByRole('button', {name: '기본 목록으로', exact: true}).click(); await sleep(200);
+  ok(/처음 목록으로 되돌립니다/.test(await text('#modal')), '클럽: 기본 목록 복원은 확인창');
+  await page.getByRole('button', {name: '취소', exact: true}).click(); await sleep(150);
+  ok((await page.evaluate(() => window.__azura.state.settings.clubs.length)) === 4, '클럽: 취소하면 그대로');
+  await page.locator('#s-settings [data-nav="play"]').click(); await sleep(200);
+  ok((await page.locator('#clubs button').count()) === 4, '플레이 화면 클럽 버튼 4개로 바뀜');
+  await page.locator('#menuBtn').click(); await page.getByRole('button', {name: '설정', exact: true}).click(); await sleep(300);
+  await page.getByRole('button', {name: '기본 목록으로', exact: true}).click(); await page.getByRole('button', {name: '되돌리기', exact: true}).click(); await sleep(200);
+  ok((await page.evaluate(() => window.__azura.state.settings.clubs.length)) === 13, '클럽: 기본 13개로 복원');
+  await page.locator('#s-settings [data-nav="play"]').click(); await sleep(200);
+
   // 8) 백업 JSON 가져오기 병합
   const bk = await page.evaluate(() => JSON.parse(window.__azura.backupJson()));
   const res = await page.evaluate(([bk]) => { bk.rounds.push({id: 'other', startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-01T04:00:00Z', startHole: 1, events: []}); return window.__azura.importData(bk, 'rounds'); }, [bk]);

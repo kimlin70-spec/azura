@@ -607,9 +607,9 @@ function renderSettings(){
   body.appendChild(sec); const holesEl = sec.querySelector('#holes'); const warns = courseWarnings();
   s.course.holes.forEach(H => {
     const row = el('div', 'holerow');
-    const coordRow = (f, ph) => `<div class="coordrow"><input type="text" placeholder="${ph}" data-f="${f}" autocomplete="off" autocapitalize="off" spellcheck="false"><button data-gps="${f}" aria-label="${FIELD_LABEL[f]}을 현재 위치로" title="${FIELD_LABEL[f]}을 현재 위치로">📍</button></div>`;
+    const coordRow = (f, ph) => `<div class="coordrow"><input type="text" placeholder="${ph}" data-f="${f}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done"><button data-gps="${f}" aria-label="${FIELD_LABEL[f]}을 현재 위치로" title="${FIELD_LABEL[f]}을 현재 위치로">📍</button></div>`;
     row.innerHTML = `<div class="hn">${H.no}번</div><div class="fields">
-      <div class="parrow"><input type="number" inputmode="numeric" min="3" max="6" placeholder="파" data-f="par"><div class="src" data-src></div></div>
+      <div class="parrow"><input type="number" inputmode="numeric" min="3" max="6" placeholder="파" data-f="par" enterkeyhint="done"><div class="src" data-src></div></div>
       ${coordRow('center', '그린 중앙 좌표')}${coordRow('front', '앞 (선택)')}${coordRow('back', '뒤 (선택)')}
       <div class="warnmsg" data-w></div></div>`;
     paintHoleRow(row, H, warns);
@@ -619,14 +619,22 @@ function renderSettings(){
   });
 
   // 클럽
-  const cs = el('div', 'section', `<h2>클럽 목록</h2><div class="hint">한 줄에 하나. 화면의 버튼 순서와 같습니다. 이름에 "퍼터"가 들어간 클럽은 거리 계산에서 빠집니다.</div><textarea id="clubsTa"></textarea><div class="rowbtns"><button id="clubsReset">기본 목록으로</button></div>`);
+  const cs = el('div', 'section', `<h2>클럽 목록</h2><div class="hint">한 줄에 하나. 화면의 버튼 순서와 같습니다. 고친 뒤 <b>저장</b>을 누르세요. 이름에 "퍼터"가 들어간 클럽은 거리 계산에서 빠집니다.</div><textarea id="clubsTa" enterkeyhint="done" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea><div class="rowbtns"><button id="clubsSave" class="primary">저장</button><button id="clubsReset">기본 목록으로</button></div>`);
   body.appendChild(cs); const ta = cs.querySelector('#clubsTa'); ta.value = s.clubs.join('\n');
-  ta.addEventListener('change', () => {
+  const saveClubs = quiet => {
     const list = Array.from(new Set(ta.value.split('\n').map(x => x.trim()).filter(Boolean)));
-    if (!list.length) { toast('클럽이 하나 이상 필요합니다'); ta.value = s.clubs.join('\n'); return; }
-    s.clubs = list; save(); toast('클럽 목록 저장');
+    if (!list.length) { if (!quiet) { toast('클럽이 하나 이상 필요합니다'); ta.value = s.clubs.join('\n'); } return false; }
+    if (list.join('|') !== s.clubs.join('|')) { s.clubs = list; save(); }
+    if (!quiet) toast('클럽 목록 저장');
+    return true;
+  };
+  let taTimer = null;
+  ta.addEventListener('input', () => { clearTimeout(taTimer); taTimer = setTimeout(() => saveClubs(true), 600); }); // 타이핑 중에도 자동 저장
+  ta.addEventListener('change', () => saveClubs(false));
+  cs.querySelector('#clubsSave').onclick = () => { clearTimeout(taTimer); ta.blur(); saveClubs(false); };
+  cs.querySelector('#clubsReset').onclick = () => ask({title: '기본 목록으로', body: '클럽 목록을 처음 목록으로 되돌립니다. 지금 적어 둔 목록은 사라집니다.', buttons: [{label: '되돌리기', value: true, kind: 'danger'}, {label: '취소', value: null}]}).then(v => {
+    if (!v) return; clearTimeout(taTimer); s.clubs = CLUBS_DEFAULT.slice(); ta.value = s.clubs.join('\n'); save(); toast('기본 목록으로 복원');
   });
-  cs.querySelector('#clubsReset').onclick = () => { s.clubs = CLUBS_DEFAULT.slice(); ta.value = s.clubs.join('\n'); save(); toast('기본 목록으로 복원'); };
 
   // 표시
   const us = el('div', 'section', `<h2>표시</h2><div class="switch"><span>거리 단위</span><button id="unitsBtn"></button></div><div class="switch"><span>화면 켜두기<br><span class="hint">앱이 열려 있는 동안 화면이 꺼지지 않음. 주머니에 넣을 땐 전원 버튼으로 끄세요.</span></span><button id="awakeBtn"></button></div>`);
@@ -638,7 +646,7 @@ function renderSettings(){
   paint();
 
   // 테스트 위치
-  const ts = el('div', 'section', `<h2>테스트 위치</h2><div class="hint">코스 밖에서 시험할 때 GPS 대신 쓸 좌표. 비우면 실제 GPS를 씁니다.</div><input id="testPos" placeholder="-17.68xxxx, 49.50xxxx" autocomplete="off"><div class="warnmsg" id="testPosW"></div>`);
+  const ts = el('div', 'section', `<h2>테스트 위치</h2><div class="hint">코스 밖에서 시험할 때 GPS 대신 쓸 좌표. 비우면 실제 GPS를 씁니다.</div><input id="testPos" placeholder="-17.68xxxx, 49.50xxxx" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done"><div class="warnmsg" id="testPosW"></div>`);
   body.appendChild(ts); const tp = ts.querySelector('#testPos'); tp.value = coordInputText(s.testPos);
   tp.addEventListener('change', () => {
     const raw = tp.value.trim(); const w = ts.querySelector('#testPosW');

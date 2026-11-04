@@ -266,6 +266,16 @@ function setPointFromGps(no, field){
   toast(`${no}번홀 ${FIELD_LABEL[field]} 기록 ±${Math.round(f.acc)} m${moved}`, {label: '이전 값으로', fn: () => { H[field] = prev; save(); renderPlay(); repaintHoleRow(no); }});
   return true;
 }
+function recordGreenPoint(){
+  const h = state.ui.hole; const f = freshFix(6000);
+  if (!f) { toast('GPS 위치가 아직 없습니다. 잠시 기다리세요'); return; }
+  const H = hole(h);
+  const info = k => H[k] ? `지금 위치에서 ${fmtDist(distM(f, H[k]))}` : '아직 없음';
+  ask({title: `${h}번홀 그린 좌표를 현재 위치로`,
+       body: `GPS 정확도 ±${Math.round(f.acc)} m${f.acc > 10 ? ' · 너무 나빠서 지금은 기록할 수 없습니다' : ''}\n그 지점에 서 있을 때 누르세요.`,
+       buttons: [{label: `앞 · ${info('front')}`, value: 'front'}, {label: `중앙 · ${info('center')}`, value: 'center', kind: 'primary'}, {label: `뒤 · ${info('back')}`, value: 'back'}, {label: '취소', value: null}]})
+    .then(v => { if (v) setPointFromGps(h, v); });
+}
 function endRound(){
   const r = activeRound(); if (!r) { toast('진행 중인 라운드가 없습니다'); return; }
   const t = roundTotals(r);
@@ -466,7 +476,7 @@ function onImportFile(e){
 function nav(screen){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $('#s-' + screen).classList.add('active');
-  if (screen === 'settings') { renderSettings(); const cur = document.querySelector('#holes .holerow.cur'); if (cur) cur.scrollIntoView({block: 'start'}); }
+  if (screen === 'settings') renderSettings();
   if (screen === 'rounds') renderRounds();
   if (screen === 'play') renderPlay();
   window.scrollTo(0, 0);
@@ -532,6 +542,7 @@ function openMenu(){
   const r = activeRound();
   ask({title: '메뉴', buttons: [
     {label: '빠진 샷 추가', value: 'missed'},
+    {label: '그린 앞·중앙·뒤를 현재 위치로 기록', value: 'green'},
     {label: '스코어카드', value: 'card'},
     {label: `화면 켜두기: ${state.settings.keepAwake ? '켬' : '끔'}`, value: 'wake'},
     {label: r ? '라운드 종료' : '새 라운드 시작', value: 'round'},
@@ -540,6 +551,7 @@ function openMenu(){
     {label: '닫기', value: null}]}).then(v => {
     switch (v) {
       case 'missed': addMissed(); break;
+      case 'green': recordGreenPoint(); break;
       case 'card': showCard(r ? r.id : null, 'play'); break;
       case 'wake': state.settings.keepAwake = !state.settings.keepAwake; save(); if (state.settings.keepAwake) requestWake(); else releaseWake(); toast(`화면 켜두기 ${state.settings.keepAwake ? '켬' : '끔'}`); break;
       case 'round': if (r) endRound(); else { ensureRound(); renderPlay(); } break;
@@ -603,7 +615,6 @@ function renderSettings(){
     paintHoleRow(row, H, warns);
     row.querySelectorAll('input').forEach(inp => inp.addEventListener('change', () => onHoleInput(H.no, inp, row)));
     row.querySelectorAll('[data-gps]').forEach(b => b.addEventListener('click', () => { if (setPointFromGps(H.no, b.dataset.gps)) { b.classList.add('done'); setTimeout(() => b.classList.remove('done'), 1500); } }));
-    if (H.no === state.ui.hole) row.classList.add('cur');
     holesEl.appendChild(row);
   });
 
@@ -647,7 +658,7 @@ function renderSettings(){
   });
 
   // 기록 규칙
-  body.appendChild(el('div', 'section', `<h2>기록 규칙</h2><div class="hint">· 공 앞에 서서 치기 전에 클럽을 누릅니다. 그 한 번이 위치 기록이고 1타입니다.<br>· 첫 퍼트는 공 옆에서 퍼터를 누르세요. 어프로치 샷의 끝점이 됩니다. 나머지 퍼트는 어디서 눌러도 됩니다.<br>· 홀아웃은 타수를 더하지 않습니다. 컨시드 퍼트도 퍼터를 눌러야 타수에 들어갑니다.<br>· OB·워터·언플레이어블은 벌타 버튼. 직전 샷 거리는 비워집니다.<br>· 치기 전 누르는 걸 잊었으면 메뉴의 "빠진 샷 추가"를 지금 샷의 클럽을 누르기 전에 넣습니다.<br>· 그린 좌표: 그 지점에 서서 이 화면의 📍 버튼을 누르면 됩니다. 설정을 열면 지금 홀로 바로 스크롤됩니다. 홀아웃 때 표시 거리가 그린 크기를 넘게 나오면 좌표가 틀린 것입니다.</div>`));
+  body.appendChild(el('div', 'section', `<h2>기록 규칙</h2><div class="hint">· 공 앞에 서서 치기 전에 클럽을 누릅니다. 그 한 번이 위치 기록이고 1타입니다.<br>· 첫 퍼트는 공 옆에서 퍼터를 누르세요. 어프로치 샷의 끝점이 됩니다. 나머지 퍼트는 어디서 눌러도 됩니다.<br>· 홀아웃은 타수를 더하지 않습니다. 컨시드 퍼트도 퍼터를 눌러야 타수에 들어갑니다.<br>· OB·워터·언플레이어블은 벌타 버튼. 직전 샷 거리는 비워집니다.<br>· 치기 전 누르는 걸 잊었으면 메뉴의 "빠진 샷 추가"를 지금 샷의 클럽을 누르기 전에 넣습니다.<br>· 그린 좌표: 그 지점에 서서 설정의 📍 버튼이나 플레이 화면 메뉴의 "현재 위치로 기록"을 누르면 됩니다. 그린 중앙에서 표시 거리가 GPS 정확도보다 크게 나오면 좌표가 틀린 것입니다.</div>`));
 }
 function shortDate(iso){ const d = new Date(iso); return isNaN(d) ? '' : `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 function srcText(H){

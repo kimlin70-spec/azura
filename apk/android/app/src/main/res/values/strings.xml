@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Azura GPS</string>
+    <string name="title_activity_main">Azura GPS</string>
+    <string name="package_name">io.github.kimlin70spec.azura</string>
+    <string name="custom_url_scheme">io.github.kimlin70spec.azura</string>
+</resources>

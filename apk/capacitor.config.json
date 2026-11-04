@@ -1,0 +1,8 @@
+{
+  "appId": "io.github.kimlin70spec.azura",
+  "appName": "Azura GPS",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

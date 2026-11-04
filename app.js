@@ -3,6 +3,9 @@
 const STORE_KEY = 'azura.gps.v1';
 const CLUBS_DEFAULT = ['드라이버','5번 우드','4번 유틸','5번 유틸(D)','5번 아이언','7번 아이언','8번 아이언','9번 아이언','43도','45도(D)','49도','56도','퍼터'];
 const YD = 1.0936133;
+/* 안드로이드 APK 안에서 돌 때만 apk/native.js가 window.AzuraNative를 만든다.
+   브라우저에서는 undefined라서 아래 분기들은 전부 기존 동작 그대로다. */
+const nativeApp = () => window.AzuraNative || null;
 /* Azura Golf Resort 18홀 기본값: 파, 그린 중앙 (구글어스에서 찍은 초기값, 현장에서 교체 가능) */
 const COURSE_DEFAULT = [
   [4, -17.711233825767014, 49.5068720819999],
@@ -78,6 +81,7 @@ let watchId = null, lastFix = null, geoError = null, testTimer = null;
 function startGeo(){
   stopGeo();
   const tp = state.settings.testPos;
+  if (nativeApp() && !tp) { nativeApp().geo.start(onFix, onGeoErr, {background: !!activeRound()}); return; }
   if (tp) {
     const push = () => onFix({coords: {latitude: tp.lat, longitude: tp.lon, accuracy: 3}, timestamp: Date.now()});
     push(); testTimer = setInterval(push, 1000); return;
@@ -86,6 +90,7 @@ function startGeo(){
   watchId = navigator.geolocation.watchPosition(onFix, onGeoErr, {enableHighAccuracy: true, maximumAge: 0, timeout: 30000});
 }
 function stopGeo(){
+  if (nativeApp()) nativeApp().geo.stop();
   if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
   if (testTimer) { clearInterval(testTimer); testTimer = null; }
 }
@@ -106,10 +111,11 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 let wakeLock = null;
 async function requestWake(){
+  if (nativeApp()) { nativeApp().keepAwake(!!state.settings.keepAwake); return; }
   if (!state.settings.keepAwake || !('wakeLock' in navigator)) return;
   try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* 무시 */ }
 }
-function releaseWake(){ if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
+function releaseWake(){ if (nativeApp()) { nativeApp().keepAwake(false); return; } if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
 function vibrate(p){ try { navigator.vibrate && navigator.vibrate(p); } catch (e) { /* 무시 */ } }
 
 /* ---------- 위치 캡처: 탭 즉시 기록, 몇 초간 가장 좋은 위치값을 붙임 ---------- */
@@ -149,7 +155,9 @@ function activeRound(){ return state.rounds.find(r => r.id === state.activeRound
 function ensureRound(){
   let r = activeRound(); if (r) return r;
   r = {id: uid(), startedAt: new Date().toISOString(), endedAt: null, startHole: state.ui.hole, events: []};
-  state.rounds.push(r); state.activeRoundId = r.id; save(); toast('새 라운드 시작'); return r;
+  state.rounds.push(r); state.activeRoundId = r.id; save(); toast('새 라운드 시작');
+  if (nativeApp()) startGeo(); // APK: 라운드 중에는 화면이 꺼져도 GPS를 유지하는 서비스 시작
+  return r;
 }
 function hole(no){ return state.settings.course.holes[no - 1]; }
 function holeCenter(no){ const h = hole(no); return h && h.center ? h.center : null; }
@@ -283,13 +291,14 @@ function endRound(){
        buttons: [{label: '종료하고 CSV 내보내기', value: 'export', kind: 'primary'}, {label: '종료만', value: 'end'}, {label: '취소', value: null}]}).then(v => {
     if (!v) return;
     finalizeCapture(); r.endedAt = new Date().toISOString(); state.activeRoundId = null; save(); nav('rounds');
+    if (nativeApp()) startGeo(); // APK: 서비스 종료
     if (v === 'export') exportRoundCsv(r);
   });
 }
 function deleteRound(r){
   ask({title: '라운드 삭제', body: `${fmtDate(new Date(r.startedAt))} 라운드를 삭제합니다. 되돌릴 수 없습니다.`, buttons: [{label: '삭제', value: true, kind: 'danger'}, {label: '취소', value: null}]}).then(v => {
     if (!v) return;
-    if (state.activeRoundId === r.id) { finalizeCapture(); state.activeRoundId = null; }
+    if (state.activeRoundId === r.id) { finalizeCapture(); state.activeRoundId = null; if (nativeApp()) startGeo(); }
     state.rounds = state.rounds.filter(x => x.id !== r.id); save(); renderRounds();
   });
 }
@@ -431,6 +440,7 @@ function csvText(rounds){
   return '﻿' + lines.join('\r\n') + '\r\n';
 }
 async function exportFile(name, text, mime){
+  if (nativeApp()) { try { await nativeApp().exportFile(name, text, mime); } catch (e) { toast('내보내기 실패: ' + (e && e.message ? e.message : e)); } return; }
   const blob = new Blob([text], {type: mime});
   try {
     const file = new File([blob], name, {type: mime});
@@ -725,7 +735,7 @@ function boot(){
   $('#importFile').addEventListener('change', onImportFile);
   renderPlay(); startGeo(); requestWake();
   setInterval(renderGps, 500);
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if (!nativeApp() && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 window.__azura = {get state(){ return state; }, set state(v){ state = v; }, save, load, parseCoord, csvText, distM, holeStats, roundTotals, shotDistance, importData, backupJson, renderPlay, startGeo};
 boot();

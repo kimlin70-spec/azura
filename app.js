@@ -3,6 +3,28 @@
 const STORE_KEY = 'azura.gps.v1';
 const CLUBS_DEFAULT = ['드라이버','5번 우드','4번 유틸','5번 유틸(D)','5번 아이언','7번 아이언','8번 아이언','9번 아이언','43도','45도(D)','49도','56도','퍼터'];
 const YD = 1.0936133;
+/* Azura Golf Resort 18홀 기본값: 파, 그린 중앙 (구글어스에서 찍은 초기값, 현장에서 교체 가능) */
+const COURSE_DEFAULT = [
+  [4, -17.711233825767014, 49.5068720819999],
+  [4, -17.70912016828703, 49.50810391998594],
+  [4, -17.70773401249634, 49.510221240716554],
+  [4, -17.711361751606162, 49.51091543365597],
+  [4, -17.70811006824225, 49.51140344820835],
+  [4, -17.71112395250591, 49.512826777157265],
+  [5, -17.712600771311173, 49.50751864595869],
+  [3, -17.71167726533459, 49.50697574944839],
+  [3, -17.710934597829436, 49.508512550515846],
+  [4, -17.71123737546804, 49.506875823313926],
+  [3, -17.70955415901503, 49.508549532439844],
+  [5, -17.707505620227366, 49.51192819143154],
+  [5, -17.710957713246607, 49.513094395692626],
+  [3, -17.71066296698997, 49.5120429846026],
+  [4, -17.70829842756109, 49.51092984813168],
+  [4, -17.711337752375087, 49.511166962582664],
+  [5, -17.71241374411415, 49.50790680570845],
+  [4, -17.71001700389397, 49.509483213080834]
+];
+function defaultHole(i){ const d = COURSE_DEFAULT[i]; return {no: i + 1, par: d[0], center: {lat: d[1], lon: d[2], src: 'default', t: '2026-11-04'}, front: null, back: null}; }
 const $ = s => document.querySelector(s);
 
 /* ---------- 상태 ---------- */
@@ -11,7 +33,7 @@ function defaultState(){
     schema: 1,
     settings: {
       units: 'm', keepAwake: false, clubs: CLUBS_DEFAULT.slice(), testPos: null,
-      course: { name: 'Azura Golf Resort', holes: Array.from({length: 18}, (_, i) => ({no: i + 1, par: null, center: null, front: null, back: null})) }
+      course: { name: 'Azura Golf Resort', holes: Array.from({length: 18}, (_, i) => defaultHole(i)) }
     },
     rounds: [], activeRoundId: null, ui: {hole: 1}
   };
@@ -25,6 +47,7 @@ function load(){
     s.settings = Object.assign(d.settings, s.settings || {});
     if (!s.settings.course || !Array.isArray(s.settings.course.holes) || s.settings.course.holes.length !== 18) s.settings.course = d.settings.course;
     if (!Array.isArray(s.settings.clubs) || !s.settings.clubs.length) s.settings.clubs = CLUBS_DEFAULT.slice();
+    s.settings.course.holes.forEach((h, i) => { if (h.par == null && !h.center) Object.assign(h, defaultHole(i)); });
     s.rounds = Array.isArray(s.rounds) ? s.rounds : [];
     s.ui = Object.assign(d.ui, s.ui || {});
     for (const r of s.rounds) for (const ev of (r.events || [])) if (ev.pending) { ev.pending = false; if (ev.lat == null) ev.noPos = true; }
@@ -582,7 +605,7 @@ function renderSettings(){
     row.querySelector('[data-f="center"]').value = coordInputText(H.center);
     row.querySelector('[data-f="front"]').value = coordInputText(H.front);
     row.querySelector('[data-f="back"]').value = coordInputText(H.back);
-    row.querySelector('[data-src]').textContent = H.center && H.center.src === 'gps' ? `중앙: GPS로 교체 ${fmtDate(new Date(H.center.t))}` : '';
+    row.querySelector('[data-src]').textContent = !H.center ? '' : H.center.src === 'gps' ? `중앙: GPS로 교체 ${fmtDate(new Date(H.center.t))}` : H.center.src === 'default' ? '중앙: 구글어스 초기값' : '';
     row.querySelector('[data-w]').textContent = (warns[H.no] || []).join(' · ');
     row.querySelectorAll('input').forEach(inp => inp.addEventListener('change', () => onHoleInput(H.no, inp, row)));
     holesEl.appendChild(row);

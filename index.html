@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b7f3b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Azura GPS</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<style>
+:root{--bg:#fff;--fg:#111;--muted:#666;--line:#d9d9d9;--accent:#1b7f3b;--ok:#1b7f3b;--warn:#b36b00;--bad:#c0262d;--btn:#f1f1f1;--btn2:#e3eee5}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR","Malgun Gothic",sans-serif;overscroll-behavior:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+body{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
+button{font:inherit;color:inherit;background:var(--btn);border:1px solid var(--line);border-radius:12px;padding:0 10px;min-height:48px;cursor:pointer;touch-action:manipulation}
+button:active{background:var(--btn2)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.warn{background:#fff6e5;border-color:var(--warn);color:var(--warn)}
+button.danger{background:#fdecec;border-color:var(--bad);color:var(--bad)}
+input,textarea,select{font:inherit;color:inherit;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%;user-select:text;-webkit-user-select:text}
+textarea{min-height:140px}
+.screen{display:none;flex:1;flex-direction:column;min-height:0}
+.screen.active{display:flex}
+.topbar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);min-height:56px}
+.topbar .title{flex:1;text-align:center;font-weight:700;font-size:20px}
+.topbar button{min-height:44px;min-width:44px;padding:0 10px}
+.topbar .holebtn{flex:1;font-size:20px;font-weight:800;background:transparent;border-color:transparent}
+.content{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.distblock{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:140px}
+.distblock .label{font-size:16px;color:var(--muted)}
+.distblock .num{font-size:clamp(56px,26vw,128px);font-weight:800;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.distblock .num small{font-size:.3em;font-weight:600;color:var(--muted);margin-left:4px}
+.distblock .fb{font-size:22px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}
+.distblock.stale .num,.distblock.stale .fb{color:#9a9a9a}
+.distblock .nocoord{font-size:18px;color:var(--muted);line-height:1.5}
+.gps{display:flex;align-items:center;justify-content:center;gap:8px;font-size:17px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.dot{width:14px;height:14px;border-radius:50%;background:#999;display:inline-block;flex:none}
+.gps.ok .dot{background:var(--ok)} .gps.warn .dot{background:var(--warn)} .gps.bad .dot{background:var(--bad)}
+.gps.ok{color:var(--ok)} .gps.warn{color:var(--warn)} .gps.bad{color:var(--bad)}
+.score{display:flex;justify-content:space-between;align-items:baseline;font-size:17px;gap:8px;font-variant-numeric:tabular-nums}
+.score b{font-size:19px}
+.last{font-size:17px;color:var(--muted);text-align:center;min-height:22px}
+.clubs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.clubs button{min-height:52px;font-size:16px;font-weight:700;line-height:1.15;padding:4px 2px;word-break:keep-all;white-space:normal}
+.clubs button.full{grid-column:1/-1}
+.clubs button.flash{background:var(--accent);color:#fff;border-color:var(--accent)}
+.actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:0 12px 12px}
+.actions button{min-height:56px;font-size:18px;font-weight:700}
+.badge{display:inline-block;background:#fff6e5;color:var(--warn);border:1px solid var(--warn);border-radius:8px;padding:2px 8px;font-size:13px;font-weight:700;vertical-align:middle}
+.section{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.section h2{margin:0;font-size:18px}
+.hint{font-size:14px;color:var(--muted);line-height:1.5}
+.holerow{border-top:1px solid var(--line);padding-top:10px;display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:start}
+.holerow .hn{font-weight:800;font-size:18px;padding-top:10px}
+.holerow .fields{display:flex;flex-direction:column;gap:6px}
+.holerow .row2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.holerow .parrow{display:grid;grid-template-columns:90px 1fr;gap:6px;align-items:center}
+.holerow .src{font-size:13px;color:var(--muted)}
+.holerow .warnmsg{font-size:13px;color:var(--bad);font-weight:700;min-height:0}
+.rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+.rowbtns button{flex:1;min-width:110px}
+.card{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.card .t{font-weight:700;font-size:17px;display:flex;justify-content:space-between;gap:8px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:16px}
+th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:center}
+th{color:var(--muted);font-weight:600;font-size:14px}
+tr.tot td{font-weight:800}
+.switch{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.switch button{min-width:90px;flex:none}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:12px 16px;border-radius:12px;font-size:16px;max-width:92vw;display:none;align-items:center;gap:12px;z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+#toast.show{display:flex}
+#toast button{background:#444;border-color:#666;color:#fff;min-height:40px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:60;padding:12px}
+#modal.show{display:flex}
+.sheet{background:#fff;border-radius:18px;width:100%;max-width:520px;padding:16px;display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow:auto}
+.sheet h3{margin:0;font-size:19px}
+.sheet p{margin:0;font-size:16px;line-height:1.5;white-space:pre-line}
+.sheet .btns{display:flex;flex-direction:column;gap:8px}
+.sheet .btns button{min-height:52px;font-size:17px;font-weight:700}
+.grid18{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.grid18 button{min-height:52px;font-size:18px;font-weight:800}
+.grid18 button.cur{background:var(--accent);color:#fff;border-color:var(--accent)}
+.clubpick{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.clubpick button{min-height:50px;font-weight:700;word-break:keep-all}
+.sr{position:absolute;left:-9999px;width:1px;height:1px}
+</style>
+</head>
+<body>
+<section class="screen active" id="s-play">
+  <div class="topbar">
+    <button id="prevHole" aria-label="이전 홀">◀</button>
+    <button class="holebtn" id="holeBtn">1번홀</button>
+    <button id="nextHole" aria-label="다음 홀">▶</button>
+    <button id="unitBtn">m</button>
+    <button id="menuBtn" aria-label="메뉴">⋯</button>
+  </div>
+  <div class="content">
+    <div class="distblock" id="distblock"></div>
+    <div class="gps" id="gps"><span class="dot"></span><span id="gpsText">GPS 대기 중…</span></div>
+    <div class="score" id="score"></div>
+    <div class="last" id="last"></div>
+    <div class="clubs" id="clubs"></div>
+  </div>
+  <div class="actions">
+    <button id="undoBtn">되돌리기</button>
+    <button id="penBtn" class="warn">벌타</button>
+    <button id="holeoutBtn" class="primary">홀아웃</button>
+  </div>
+</section>
+<section class="screen" id="s-settings">
+  <div class="topbar"><button data-nav="play" aria-label="뒤로">◀</button><div class="title">설정</div><span style="width:44px"></span></div>
+  <div class="content" id="settingsBody"></div>
+</section>
+<section class="screen" id="s-rounds">
+  <div class="topbar"><button data-nav="play" aria-label="뒤로">◀</button><div class="title">라운드 기록</div><span style="width:44px"></span></div>
+  <div class="content" id="roundsBody"></div>
+</section>
+<section class="screen" id="s-card">
+  <div class="topbar"><button id="cardBack" aria-label="뒤로">◀</button><div class="title">스코어카드</div><span style="width:44px"></span></div>
+  <div class="content" id="cardBody"></div>
+</section>
+<div id="toast"></div>
+<div id="modal"></div>
+<input type="file" id="importFile" accept="application/json,.json" class="sr">
+<script src="./app.js"></script>
+</body>
+</html>

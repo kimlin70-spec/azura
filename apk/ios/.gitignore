@@ -11,3 +11,8 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# Build outputs anywhere under ios/ (xcodebuild -derivedDataPath/-archivePath, packaged IPA)
+build/
+*.xcarchive
+*.ipa

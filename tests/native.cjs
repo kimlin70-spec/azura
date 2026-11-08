@@ -52,7 +52,8 @@ function fakeBridge(cfg) {
       H('Share', {share: 'promise'}),
       H('App', {addListener: 'callback', removeListener: 'promise', minimizeApp: 'promise', exitApp: 'promise'}),
       H('KeepAwake', {keepAwake: 'promise', allowSleep: 'promise'}),
-      H('LocalNotifications', {checkPermissions: 'promise', requestPermissions: 'promise'})],
+      H('LocalNotifications', {checkPermissions: 'promise', requestPermissions: 'promise', createChannel: 'promise', schedule: 'promise', cancel: 'promise'}),
+      H('AzuraLock', {setShowWhenLocked: 'promise'})],
     nativePromise(plugin, method, options) {
       window.__calls.push({plugin, method, options: options == null ? null : options});
       const key = plugin + '.' + method;
@@ -288,7 +289,55 @@ const LOCAL_B = JSON.stringify({schema: 1, settings: {units: 'm', keepAwake: fal
       `App pause 뒤 미러 파일 = localStorage 값 (미러 쓰기 ${mwA.length}회)`);
     ok(A.logCount('AzuraNative ready android') === 1 && A.logs.filter(m => m.text.startsWith('AzuraNative first fix')).length === 1, '콘솔 표식은 끝까지 각 1회');
 
-    // 12) 오류 없음, safe-area 스타일은 안드로이드(inset 0)에서 아무 영향 없음
+    // 12) 거리만 보기 모드: 클럽·타수 숨김, 라운드 없이도 bg 워처, 잠금화면 표시, 거리 고정 알림(바뀔 때만·1초 1회), 끄면 모두 원복
+    {
+      const a0 = await count('BackgroundGeolocation', 'addWatcher');
+      const wBefore = (await watcherIds()).join();
+      await page.locator('#simpleBtn').click(); await sleep(400);
+      ok(await page.evaluate(() => document.body.classList.contains('simple') && getComputedStyle(document.getElementById('clubs')).display === 'none' && getComputedStyle(document.querySelector('#s-play .actions')).display === 'none' && getComputedStyle(document.getElementById('score')).display === 'none'), '거리만 보기: 클럽 그리드·버튼 줄·타수 숨김');
+      const lk = await callsOf('AzuraLock', 'setShowWhenLocked');
+      ok(lk.length >= 1 && lk[lk.length - 1].options.on === true, `거리만 보기 켬 → AzuraLock.setShowWhenLocked({on:true}) ${JSON.stringify(lk.map(c => c.options))}`);
+      const ws = await callsOf('BackgroundGeolocation', 'addWatcher');
+      const wS = ws[ws.length - 1];
+      ok(ws.length === a0 + 1 && !!wS.options.backgroundMessage && (await watcherIds()).join() === wS.id && (await watcherIds()).join() !== wBefore, `라운드 없이도 backgroundMessage 있는 워처로 교체, 활성 워처 1개 (${(await watcherIds()).join()})`);
+      const roundsBefore = await page.evaluate(() => window.__azura.state.rounds.length);
+      await pushLoc(wS.id, TEE);
+      await waitFor(async () => { const s = await callsOf('LocalNotifications', 'schedule'); const n = s.length ? s[s.length - 1].options.notifications[0] : null; return n && n.title === `1번홀 그린 ${await num('#distblock .num')} m` ? n : null; }, 2500);   // 1초 1회 갱신이라 잠깐 뒤 최신값
+      const ch = await callsOf('LocalNotifications', 'createChannel');
+      ok(ch.length === 1 && ch[0].options.id === 'azura-distance' && ch[0].options.importance === 2 && ch[0].options.vibration === false, `알림 채널 1회 생성(azura-distance, 소리·진동 없음) ${JSON.stringify(ch.map(c => c.options))}`);
+      let sc = await callsOf('LocalNotifications', 'schedule');
+      const n0 = sc.length ? sc[sc.length - 1].options.notifications[0] : null;
+      const dShown = await num('#distblock .num');
+      ok(!!n0 && n0.id === 7001 && n0.ongoing === true && n0.autoCancel === false && n0.silent === true && n0.channelId === 'azura-distance' && n0.smallIcon === 'ic_notification', `고정 알림 schedule: id 7001, ongoing, 소리 없음, ic_notification ${n0 ? JSON.stringify(n0) : ''}`);
+      ok(!!n0 && n0.title === `1번홀 그린 ${dShown} m` && /GPS ±4 m/.test(n0.body), `알림 제목 '1번홀 그린 ${dShown} m', 본문에 GPS ±4 m (${n0 && n0.title} / ${n0 && n0.body})`);
+      const sc1 = sc.length;
+      await sleep(1200);                                        // 같은 위치면 다시 올리지 않음
+      ok((await count('LocalNotifications', 'schedule')) === sc1, '거리가 안 바뀌면 알림을 다시 올리지 않음');
+      await pushLoc(wS.id, {lat: TEE.lat + 0.0005, lon: TEE.lon}); await sleep(1600);
+      sc = await callsOf('LocalNotifications', 'schedule');
+      const n1 = sc[sc.length - 1].options.notifications[0];
+      ok(sc.length === sc1 + 1 && n1.title !== n0.title && n1.title === `1번홀 그린 ${await num('#distblock .num')} m`, `위치가 바뀌면 알림 제목 갱신 (${n1.title})`);
+      const scBurst = sc.length;
+      await pushLoc(wS.id, {lat: TEE.lat + 0.0006, lon: TEE.lon}); await sleep(100); await pushLoc(wS.id, {lat: TEE.lat + 0.0007, lon: TEE.lon}); await sleep(100); await pushLoc(wS.id, {lat: TEE.lat + 0.0008, lon: TEE.lon}); await sleep(1600);
+      ok((await count('LocalNotifications', 'schedule')) <= scBurst + 2, `연속 위치 3개는 1초에 한 번만 알림 갱신 (추가 ${(await count('LocalNotifications', 'schedule')) - scBurst}회)`);
+      await page.locator('#nextHole').click(); await sleep(300);
+      sc = await callsOf('LocalNotifications', 'schedule');
+      ok(sc[sc.length - 1].options.notifications[0].title.startsWith('2번홀'), `▶로 홀을 넘기면 알림도 바로 2번홀 (${sc[sc.length - 1].options.notifications[0].title})`);
+      await page.locator('#prevHole').click(); await sleep(200);
+      ok((await page.evaluate(() => window.__azura.state.rounds.length)) === roundsBefore, '거리만 보기에서는 라운드가 생기지 않음');
+      await page.locator('#simpleBtn').click(); await sleep(400);
+      const lk2 = await callsOf('AzuraLock', 'setShowWhenLocked');
+      const cn = await callsOf('LocalNotifications', 'cancel');
+      const wE = await callsOf('BackgroundGeolocation', 'addWatcher');
+      ok(lk2[lk2.length - 1].options.on === false && cn.length === 1 && cn[0].options.notifications[0].id === 7001, '거리만 보기 끔 → setShowWhenLocked(false), 알림 cancel(7001)');
+      ok(!('backgroundMessage' in wE[wE.length - 1].options) && (await watcherIds()).length === 1, '끄면 라운드 없음 → fg 워처로 돌아감, 활성 워처 1개');
+      ok(await page.evaluate(() => !document.body.classList.contains('simple') && getComputedStyle(document.getElementById('clubs')).display !== 'none'), '끄면 클럽 그리드 다시 보임');
+      const scEnd = await count('LocalNotifications', 'schedule');
+      await pushLoc((await watcherIds())[0], TEE); await sleep(1200);
+      ok((await count('LocalNotifications', 'schedule')) === scEnd, '끈 뒤에는 위치가 와도 알림을 올리지 않음');
+    }
+
+    // 13) 오류 없음, safe-area 스타일은 안드로이드(inset 0)에서 아무 영향 없음
     const sa0 = await page.evaluate(() => { const b = getComputedStyle(document.body); return {pad: [b.paddingTop, b.paddingRight, b.paddingBottom, b.paddingLeft].join(' '), toast: getComputedStyle(document.getElementById('toast')).bottom, modal: getComputedStyle(document.getElementById('modal')).paddingBottom}; });
     ok(sa0.pad === '0px 0px 0px 0px' && sa0.toast === '90px' && sa0.modal === '12px', `(vii) inset 0(안드로이드)에서는 body 패딩 0, 토스트 bottom 90px, 창 아래 여백 12px 그대로 ${JSON.stringify(sa0)}`);
     ok(errors.length === 0, `페이지 오류 없음 ${errors.length ? JSON.stringify(errors) : ''}`);
@@ -437,6 +486,11 @@ const LOCAL_B = JSON.stringify({schema: 1, settings: {units: 'm', keepAwake: fal
     ok(I.logCount('AzuraNative ready ios') === 1 && I.logs.filter(m => m.text.startsWith('AzuraNative ready')).length === 1, "(i) 'AzuraNative ready ios' 정확히 1회");
     ok(I.logCount('AzuraNative first fix ±4 m') === 1 && I.logs.filter(m => m.text.startsWith('AzuraNative first fix')).length === 1, "(i) 'AzuraNative first fix ±4 m' 정확히 1회 (위치를 여러 번, 두 워처에서 받은 뒤)");
     ok((await count('App', 'minimizeApp')) === 0 && (await I.loads()) === 1, 'iOS: minimizeApp 호출 없음, 리로드 없음');
+    await page.locator('#simpleBtn').click(); await sleep(400);
+    ok((await count('AzuraLock', 'setShowWhenLocked')) === 0 && (await count('LocalNotifications', 'schedule')) === 0 && (await count('LocalNotifications', 'createChannel')) === 0, 'iOS 거리만 보기: 잠금화면 플러그인·알림 호출 없음');
+    const wsI = await callsOf('BackgroundGeolocation', 'addWatcher');
+    ok(!!wsI[wsI.length - 1].options.backgroundMessage && (await watcherIds()).length === 1, 'iOS 거리만 보기: 라운드 없이도 백그라운드 위치 워처');
+    await page.locator('#simpleBtn').click(); await sleep(300);
 
     // (vii) 노치·홈 바 흉내(safe-area inset 위 47, 아래 34): 본문·토스트·창이 그만큼 비켜남
     const cdp = await I.ctx.newCDPSession(page);

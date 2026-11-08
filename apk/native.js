@@ -21,6 +21,7 @@
   const App = plugin('App');
   const KeepAwake = plugin('KeepAwake');
   const Notif = isAndroid ? plugin('LocalNotifications') : null;
+  const Lock = isAndroid ? plugin('AzuraLock') : null;   // apk/android의 자체 플러그인: 잠금화면 위에 앱 표시
   const say = (msg, action) => { if (typeof window.toast === 'function') window.toast(msg, action); else console.log(msg); };
   const errText = e => (e && e.message) || String(e);
 
@@ -196,6 +197,28 @@
     catch (e) { if (e && /cancel/i.test(e.message || '')) return; throw e; } // 공유창을 그냥 닫은 것은 실패가 아님
   }
 
+  /* ---------- 거리만 보기 모드용 (안드로이드) ----------
+     lockScreen(on): 전원 버튼을 누르면 잠금 해제 없이 앱 화면이 바로 뜨게 한다(알람 앱이 쓰는 표준 기능).
+     distanceNotice({title, body}): 잠금화면과 알림창에 "7번홀 그린 143 m" 고정 알림. 소리·진동 없는 채널,
+     같은 id로 다시 올려 제자리에서 갱신. null이면 지운다. iOS에서는 둘 다 아무것도 하지 않는다. */
+  const NOTICE_ID = 7001, CHANNEL = 'azura-distance';
+  let channelReady = null, noticeQueue = Promise.resolve();
+  function lockScreen(on){
+    if (!Lock) return Promise.resolve();
+    return Lock.setShowWhenLocked({on: !!on}).catch(e => console.warn('AzuraNative: 잠금화면 표시 실패: ' + errText(e)));
+  }
+  function distanceNotice(info){
+    if (!Notif) return Promise.resolve();
+    noticeQueue = noticeQueue.then(async () => {
+      if (!info) { await Notif.cancel({notifications: [{id: NOTICE_ID}]}).catch(() => {}); return; }
+      await ensureNotificationPermission();
+      if (!channelReady) channelReady = Notif.createChannel({id: CHANNEL, name: '거리 표시', description: '거리만 보기 모드의 고정 알림', importance: 2, visibility: 1, vibration: false, sound: ''}).catch(() => {});
+      await channelReady;
+      await Notif.schedule({notifications: [{id: NOTICE_ID, title: info.title, body: info.body, channelId: CHANNEL, ongoing: true, autoCancel: false, silent: true, smallIcon: 'ic_notification', iconColor: '#1b7f3b'}]});
+    }).catch(e => console.warn('AzuraNative: 거리 알림 실패: ' + errText(e)));
+    return noticeQueue;
+  }
+
   /* ---------- 화면 켜두기 ---------- */
   function keepAwake(on){ return (on ? KeepAwake.keepAwake() : KeepAwake.allowSleep()).catch(() => {}); }
 
@@ -208,6 +231,6 @@
     App.minimizeApp().catch(() => {});
   });
 
-  window.AzuraNative = {isNative: true, platform, geo, exportFile, keepAwake};
+  window.AzuraNative = {isNative: true, platform, geo, exportFile, keepAwake, lockScreen, distanceNotice};
   console.log('AzuraNative ready ' + platform);
 })();

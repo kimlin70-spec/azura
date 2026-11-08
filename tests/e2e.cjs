@@ -180,9 +180,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     ok(vis.simple && vis.clubs === 'none' && vis.actions === 'none' && vis.score === 'none' && vis.badge !== 'none', `거리만 보기: 클럽·버튼·타수 숨김, 안내 표시 ${JSON.stringify(vis)}`);
     ok(/거리만 보기: 켬/.test(await text('#toast')), '거리만 보기 켬 토스트');
     const hBefore = await text('#holeBtn');
+    await page.locator('#prevHole').click(); await sleep(200);   // 2번홀(좌표 있음). 4번홀은 앞 검사에서 좌표를 비웠음
+    ok((await text('#holeBtn')) !== hBefore && (await num('#distblock .num')) > 0, `◀로 홀 넘김, 거리 계속 표시 (${await text('#holeBtn')} ${await num('#distblock .num')} m)`);
     await page.locator('#nextHole').click(); await sleep(200);
-    ok((await text('#holeBtn')) !== hBefore && (await num('#distblock .num')) > 0, `▶로 홀 넘김, 거리 계속 표시 (${await text('#holeBtn')} ${await num('#distblock .num')} m)`);
-    await page.locator('#prevHole').click(); await sleep(200);
     ok((await page.evaluate(() => window.__azura.state.rounds.length)) === roundsBefore && (await page.evaluate(() => window.__azura.state.settings.simple)) === true, '라운드 수 그대로, 설정에 저장됨');
     await page.reload(); await sleep(500);
     ok(await page.evaluate(() => document.body.classList.contains('simple')), '새로고침 뒤에도 거리만 보기 유지');

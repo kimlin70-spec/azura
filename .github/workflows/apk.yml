@@ -191,6 +191,12 @@ jobs:
           git tag -f apk-latest "${GITHUB_SHA}"
           git push --force origin refs/tags/apk-latest
 
+      - name: 이전 릴리스 apk-latest 삭제 (릴리스 날짜가 새 빌드 시각으로 보이게)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete apk-latest --yes || echo "삭제할 이전 릴리스 없음"
+
       - name: 릴리스 apk-latest 생성/갱신
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2

@@ -35,7 +35,7 @@ function defaultState(){
   return {
     schema: 1,
     settings: {
-      units: 'm', keepAwake: false, simple: false, clubs: CLUBS_DEFAULT.slice(), testPos: null,
+      units: 'm', keepAwake: false, lockShow: true, lockNotice: false, clubs: CLUBS_DEFAULT.slice(), testPos: null,
       course: { name: 'Azura Golf Resort', holes: Array.from({length: 18}, (_, i) => defaultHole(i)) }
     },
     rounds: [], activeRoundId: null, ui: {hole: 1}
@@ -81,7 +81,7 @@ let watchId = null, lastFix = null, geoError = null, testTimer = null;
 function startGeo(){
   stopGeo();
   const tp = state.settings.testPos;
-  if (nativeApp() && !tp) { nativeApp().geo.start(onFix, onGeoErr, {background: !!activeRound() || !!state.settings.simple}); return; }
+  if (nativeApp() && !tp) { nativeApp().geo.start(onFix, onGeoErr, {background: !!activeRound() || !!state.settings.lockNotice}); return; }
   if (tp) {
     const push = () => onFix({coords: {latitude: tp.lat, longitude: tp.lon, accuracy: 3}, timestamp: Date.now()});
     push(); testTimer = setInterval(push, 1000); return;
@@ -491,27 +491,21 @@ function nav(screen){
   if (screen === 'play') renderPlay();
   window.scrollTo(0, 0);
 }
-/* 거리만 보기 모드: 클럽·타수·버튼을 숨기고 거리만 크게. 기록은 남기지 않는다. 홀은 ◀ ▶로 넘긴다.
-   APK에서는 모드가 켜진 동안 화면이 꺼져도 GPS를 유지하고, 전원 버튼만 누르면 잠금 해제 없이 이 화면이 뜨며,
-   잠금화면·알림창에 거리가 적힌 고정 알림을 띄운다. */
-function setSimple(on){
-  state.settings.simple = !!on; save();
-  document.body.classList.toggle('simple', state.settings.simple);
-  $('#simpleBtn').classList.toggle('primary', state.settings.simple);
+/* 잠금화면 (안드로이드 APK 전용. 웹앱·아이폰에서는 아무 일도 하지 않는다)
+   - lockShow: 앱을 켠 채 화면을 끈 뒤 전원 버튼을 누르면 잠금 해제 없이 평소 화면이 그대로 뜬다. 기본 켬.
+   - lockNotice: 잠금화면·알림창에 "N번홀 그린 d m" 고정 알림. 켜 두면 라운드가 없어도 화면이 꺼진 채 GPS를 유지한다. */
+function applyLockShow(){ const n = nativeApp(); if (n && n.lockScreen) n.lockScreen(!!state.settings.lockShow); }
+function setLockNotice(on){
+  state.settings.lockNotice = !!on; save();
   const n = nativeApp();
-  if (n) {
-    if (n.lockScreen) n.lockScreen(state.settings.simple);
-    if (!state.settings.simple && n.distanceNotice) n.distanceNotice(null);
-    lastNotice = '';
-    startGeo();
-  }
+  if (n) { if (!on && n.distanceNotice) n.distanceNotice(null); lastNotice = ''; lastNoticeAt = 0; startGeo(); }
   renderPlay();
-  toast(state.settings.simple ? '거리만 보기: 켬 · 기록하지 않습니다' : '거리만 보기: 끔');
+  toast(on ? '잠금화면 거리 알림: 켬 · 화면이 꺼져도 GPS 유지' : '잠금화면 거리 알림: 끔');
 }
 let lastNotice = '', lastNoticeAt = 0;
 function updateNotice(){
   const n = nativeApp(); if (!n || !n.distanceNotice) return;
-  if (!state.settings.simple) return;
+  if (!state.settings.lockNotice) return;
   const h = state.ui.hole; const H = hole(h); const f = lastFix; const fresh = fixAge() <= 6000;
   let title, body;
   if (!H.center) { title = `${h}번홀 · 그린 좌표 없음`; body = '설정에서 좌표를 넣으세요'; }
@@ -593,7 +587,9 @@ function openMenu(){
     {label: '빠진 샷 추가', value: 'missed'},
     {label: '그린 앞·중앙·뒤를 현재 위치로 기록', value: 'green'},
     {label: '스코어카드', value: 'card'},
-    {label: `거리만 보기: ${state.settings.simple ? '켬' : '끔'}`, value: 'simple'},
+    ...(nativeApp() && nativeApp().lockScreen ? [
+      {label: `잠금화면 거리 알림: ${state.settings.lockNotice ? '켬' : '끔'}`, value: 'notice'},
+      {label: `잠금 해제 없이 앱 표시: ${state.settings.lockShow ? '켬' : '끔'}`, value: 'lockshow'}] : []),
     {label: `화면 켜두기: ${state.settings.keepAwake ? '켬' : '끔'}`, value: 'wake'},
     {label: r ? '라운드 종료' : '새 라운드 시작', value: 'round'},
     {label: '라운드 기록', value: 'rounds'},
@@ -603,7 +599,8 @@ function openMenu(){
       case 'missed': addMissed(); break;
       case 'green': recordGreenPoint(); break;
       case 'card': showCard(r ? r.id : null, 'play'); break;
-      case 'simple': setSimple(!state.settings.simple); break;
+      case 'notice': setLockNotice(!state.settings.lockNotice); break;
+      case 'lockshow': state.settings.lockShow = !state.settings.lockShow; save(); applyLockShow(); toast(state.settings.lockShow ? '전원 버튼만 누르면 잠금 해제 없이 앱이 보입니다' : '잠금화면이 먼저 뜹니다'); break;
       case 'wake': state.settings.keepAwake = !state.settings.keepAwake; save(); if (state.settings.keepAwake) requestWake(); else releaseWake(); toast(`화면 켜두기 ${state.settings.keepAwake ? '켬' : '끔'}`); break;
       case 'round': if (r) endRound(); else { ensureRound(); renderPlay(); } break;
       case 'rounds': nav('rounds'); break;
@@ -768,10 +765,7 @@ function boot(){
   $('#holeBtn').onclick = pickHole;
   $('#unitBtn').onclick = () => { state.settings.units = state.settings.units === 'm' ? 'yd' : 'm'; save(); renderPlay(); };
   $('#menuBtn').onclick = openMenu;
-  $('#simpleBtn').onclick = () => setSimple(!state.settings.simple);
-  document.body.classList.toggle('simple', !!state.settings.simple);
-  $('#simpleBtn').classList.toggle('primary', !!state.settings.simple);
-  if (state.settings.simple && nativeApp() && nativeApp().lockScreen) nativeApp().lockScreen(true);
+  applyLockShow();
   $('#undoBtn').onclick = undo;
   $('#penBtn').onclick = addPenalty;
   $('#holeoutBtn').onclick = () => holeOut();

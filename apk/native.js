@@ -231,6 +231,7 @@
     App.minimizeApp().catch(() => {});
   });
 
-  window.AzuraNative = {isNative: true, platform, geo, exportFile, keepAwake, lockScreen, distanceNotice};
+  // 잠금화면 표시·거리 알림은 안드로이드에만 있다. iOS에서는 속성 자체를 두지 않아 app.js가 메뉴 항목을 보여주지 않는다.
+  window.AzuraNative = Object.assign({isNative: true, platform, geo, exportFile, keepAwake}, isAndroid ? {lockScreen, distanceNotice} : {});
   console.log('AzuraNative ready ' + platform);
 })();

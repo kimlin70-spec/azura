@@ -172,22 +172,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok((await page.evaluate(() => window.__azura.state.settings.clubs.length)) === 13, '클럽: 기본 13개로 복원');
   await page.locator('#s-settings [data-nav="play"]').click(); await sleep(200);
 
-  // 7e) 거리만 보기 모드: 클럽·타수 숨김, 거리와 화살표만, 라운드 안 생김, 끄면 원복, 새로고침 뒤 유지
+  // 7e) 웹앱: 잠금화면 메뉴 항목 없음(안드로이드 앱 전용), 위쪽 줄 홀 이름은 한 줄
   {
-    const roundsBefore = await page.evaluate(() => window.__azura.state.rounds.length);
-    await page.locator('#simpleBtn').click(); await sleep(300);
-    const vis = await page.evaluate(() => ({simple: document.body.classList.contains('simple'), clubs: getComputedStyle(document.getElementById('clubs')).display, actions: getComputedStyle(document.querySelector('#s-play .actions')).display, score: getComputedStyle(document.getElementById('score')).display, badge: getComputedStyle(document.getElementById('simpleBadge')).display}));
-    ok(vis.simple && vis.clubs === 'none' && vis.actions === 'none' && vis.score === 'none' && vis.badge !== 'none', `거리만 보기: 클럽·버튼·타수 숨김, 안내 표시 ${JSON.stringify(vis)}`);
-    ok(/거리만 보기: 켬/.test(await text('#toast')), '거리만 보기 켬 토스트');
-    const hBefore = await text('#holeBtn');
-    await page.locator('#prevHole').click(); await sleep(200);   // 2번홀(좌표 있음). 4번홀은 앞 검사에서 좌표를 비웠음
-    ok((await text('#holeBtn')) !== hBefore && (await num('#distblock .num')) > 0, `◀로 홀 넘김, 거리 계속 표시 (${await text('#holeBtn')} ${await num('#distblock .num')} m)`);
-    await page.locator('#nextHole').click(); await sleep(200);
-    ok((await page.evaluate(() => window.__azura.state.rounds.length)) === roundsBefore && (await page.evaluate(() => window.__azura.state.settings.simple)) === true, '라운드 수 그대로, 설정에 저장됨');
-    await page.reload(); await sleep(500);
-    ok(await page.evaluate(() => document.body.classList.contains('simple')), '새로고침 뒤에도 거리만 보기 유지');
-    await page.locator('#simpleBtn').click(); await sleep(300);
-    ok(await page.evaluate(() => !document.body.classList.contains('simple') && getComputedStyle(document.getElementById('clubs')).display !== 'none' && !window.__azura.state.settings.simple), '끄면 클럽 그리드 복귀');
+    await page.locator('#menuBtn').click(); await sleep(200);
+    const menu = await text('#modal');
+    ok(!/잠금/.test(menu) && /화면 켜두기/.test(menu), '웹앱 메뉴에는 잠금화면 항목이 없고 화면 켜두기는 있음');
+    await page.getByRole('button', {name: '닫기', exact: true}).click(); await sleep(150);
+    await page.evaluate(() => { window.__azura.state.ui.hole = 12; window.__azura.state.settings.course.holes[11].par = 5; window.__azura.save(); window.__azura.renderPlay(); });
+    const hb = await page.evaluate(() => { const b = document.getElementById('holeBtn'); const r = b.getBoundingClientRect(); return {text: b.textContent, h: Math.round(r.height), lines: Math.round(r.height / parseFloat(getComputedStyle(b).lineHeight || '24')), topbar: Math.round(document.querySelector('#s-play .topbar').getBoundingClientRect().height)}; });
+    ok(hb.text === '12번홀 · 파5' && hb.topbar <= 64, `위쪽 줄 "12번홀 · 파5"가 한 줄 (줄 높이 ${hb.topbar}px)`);
+    await page.evaluate(() => { window.__azura.state.ui.hole = 3; window.__azura.save(); window.__azura.renderPlay(); });
   }
 
   // 8) 백업 JSON 가져오기 병합
